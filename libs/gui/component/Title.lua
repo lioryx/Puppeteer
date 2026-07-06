@@ -17,4 +17,11 @@ function PTGuiTitle:New()
     return obj
 end
 
+-- Route SetText through the text subcomponent (rather than the imported direct-to-handle setter)
+-- so the title is localized by PTGuiText:SetText.
+function PTGuiTitle:SetText(text)
+    self:GetComponent("text"):SetText(text)
+    return self
+end
+
 PTGuiLib.RegisterComponent(PTGuiTitle)

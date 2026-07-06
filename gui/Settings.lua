@@ -2,6 +2,7 @@ PTSettingsGui = {}
 PTUtil.SetEnvironment(PTSettingsGui, PuppeteerSettings)
 local util = PTUtil
 local colorize = util.Colorize
+local T = PTLocale.TranslateText -- Localize UI display text; passes non-strings through untouched
 local compost = AceLibrary("Compost-2.0")
 local GetOption = PuppeteerSettings.GetOption
 local SetOption = PuppeteerSettings.SetOption
@@ -476,7 +477,7 @@ function CreateTab_Options_SpellsTooltip(panel)
     layout:offset(0, 10)
     factory:dropdown("Anchor", "Where the tooltip should be anchored", "SpellsTooltip.Anchor", 
         {"Top Left", "Top Right", "Bottom Left", "Bottom Right"})
-    factory:checkbox("Show Item Count", {"Show the amount of your bound items", colorize("Warning: This causes lag!", 1, 0.4, 0.4)}, 
+    factory:checkbox("Show Item Count", {"Show the amount of your bound items", colorize(T("Warning: This causes lag!"), 1, 0.4, 0.4)},
         "SpellsTooltip.ShowItemCount")
 end
 
@@ -911,7 +912,7 @@ function CreateTab_Customize()
     LockFrameCheckbox = lockFrameCheckbox
 
     local hideTitleCheckbox = CreateLabeledCheckbox(frameStyleContainer, "Hide Title", {"If checked, the title of this frame will be hidden", 
-        colorize("Note: When you want to move the frame, you need to enable the title!", 1, 0.4, 0.4)})
+        colorize(T("Note: When you want to move the frame, you need to enable the title!"), 1, 0.4, 0.4)})
         :OnClick(function(self)
             local frameName = frameDropdown:GetText()
             PuppeteerSettings.SetTitleHidden(frameName, self:GetChecked() == 1)
@@ -1067,7 +1068,7 @@ end
 
 function CreateStyleOverrideSlider(text, tooltip, optionLoc, min, max)
     local checkbox = CreateLabeledCheckbox(StyleOverrideContainer, text, tooltip)
-    checkbox:ApplyTooltip(tooltip, colorize("Check to override style default", 1, 0.4, 1))
+    checkbox:ApplyTooltip(tooltip, colorize(T("Check to override style default"), 1, 0.4, 1))
     local slider = CreateSlider(StyleOverrideContainer)
     slider:SetMinMaxValues(min, max)
     slider:GetSlider():SetNumberedText()
@@ -1143,15 +1144,18 @@ end
 function CreateTab_About()
     local container = TabFrame:CreateTab("About")
 
-    local text = PTGuiLib.GetText(container, 
-            "Puppeteer Version "..Puppeteer.VERSION..
-            "\n\n\nPuppeteer Author: OldManAlpha\nTurtle Nordanaar IGN: Oldmana, Lowall, Jmdruid"..
-            "\n\nHealersMate Original Author: i2ichardt\nEmail: rj299@yahoo.com"..
-            "\n\nAdditional Contributors"..
-            "\nTurtle WoW Community: Answers to addon development questions"..
-            "\nShagu: Utility functions & providing a wealth of research material"..
-            "\nChatGPT: Utility functions"..
-            "\n\n\nCheck For Updates, Report Issues, Make Suggestions:\n",
+    -- Compose from translated fragments; names, emails and the version stay literal. The fully
+    -- composed string is not itself a translation key, so the component's auto-translate leaves it
+    -- as-is (the fragments are already localized).
+    local text = PTGuiLib.GetText(container,
+            T("Puppeteer Version").." "..Puppeteer.VERSION..
+            "\n\n\n"..T("Puppeteer Author")..": OldManAlpha\n"..T("Turtle Nordanaar IGN")..": Oldmana, Lowall, Jmdruid"..
+            "\n\n"..T("HealersMate Original Author")..": i2ichardt\n"..T("Email")..": rj299@yahoo.com"..
+            "\n\n"..T("Additional Contributors")..
+            "\nTurtle WoW Community: "..T("Answers to addon development questions")..
+            "\nShagu: "..T("Utility functions & providing a wealth of research material")..
+            "\nChatGPT: "..T("Utility functions")..
+            "\n\n\n"..T("Check For Updates, Report Issues, Make Suggestions")..":\n",
             12)
         :SetPoint("TOP", container, "TOP", 0, -80)
 

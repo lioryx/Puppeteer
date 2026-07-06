@@ -47,6 +47,17 @@ end
 
 T = Translate
 
+-- String-safe translate for UI display text. Translates strings via the active Translate
+-- function (resolved dynamically, so it respects SetTranslations), and passes through any
+-- non-string value (numbers, nil) untouched. Used by the GUI components to localize labels
+-- without disturbing dynamic/non-text values.
+function TranslateText(text)
+    if type(text) == "string" then
+        return Translate(text)
+    end
+    return text
+end
+
 function Keys(set)
     if not IsUsingTranslations() then
         return

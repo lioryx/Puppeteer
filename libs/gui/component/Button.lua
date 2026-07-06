@@ -4,6 +4,12 @@ PTGuiButton:Import(true, "SetText", "Enable", "Disable")
 PTGuiButton:Import(false, "GetText", "IsEnabled")
 local _G = getfenv(0)
 
+-- Localize button labels. Non-string values pass through unchanged.
+local importedSetText = PTGuiButton.SetText
+function PTGuiButton:SetText(text)
+    return importedSetText(self, PTLocale.TranslateText(text))
+end
+
 function PTGuiButton:New()
     local obj = setmetatable({}, self)
     obj:SetHandle(CreateFrame("Button", self:GenerateName(), nil, "UIPanelButtonTemplate"))

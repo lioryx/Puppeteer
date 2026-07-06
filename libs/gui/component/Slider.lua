@@ -27,15 +27,15 @@ function PTGuiSlider:OnDispose()
 end
 
 function PTGuiSlider:SetText(text)
-    _G[self:GetName().."Text"]:SetText(text)
+    _G[self:GetName().."Text"]:SetText(PTLocale.TranslateText(text))
 end
 
 function PTGuiSlider:SetLowText(text)
-    _G[self:GetName().."Low"]:SetText(text)
+    _G[self:GetName().."Low"]:SetText(PTLocale.TranslateText(text))
 end
 
 function PTGuiSlider:SetHighText(text)
-    _G[self:GetName().."High"]:SetText(text)
+    _G[self:GetName().."High"]:SetText(PTLocale.TranslateText(text))
 end
 
 function PTGuiSlider:SetNumberedText()

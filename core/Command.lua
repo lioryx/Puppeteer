@@ -1,5 +1,5 @@
 SLASH_PUPPETEER1 = "/puppeteer"
-SLASH_PUPPETEER2 = "/pt"
+SLASH_PUPPETEER2 = "/pupt"
 if not IsAddOnLoaded("HealersMate") then
     SLASH_PUPPETEER3 = "/hm"
 end

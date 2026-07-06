@@ -357,6 +357,7 @@ local function ShowTooltip(attachTo, texts)
     end
 
     for i, text in ipairs(texts) do
+        text = PTLocale.TranslateText(text)
         if i ~= 1 then
             text = PTUtil.Colorize(text, 1.0, 0.88, 0.3)
         end

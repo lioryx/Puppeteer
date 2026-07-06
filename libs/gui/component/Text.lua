@@ -2,6 +2,13 @@ PTGuiText = PTGuiComponent:Extend("text")
 PTGuiText:Import(true, "SetText", "SetFont", "SetNonSpaceWrap", "SetJustifyH", "SetJustifyV", "SetTextColor")
 PTGuiText:Import(false, "GetText", "GetFont", "GetStringWidth", "CanNonSpaceWrap", "GetJustifyH", "GetJustifyV", "GetTextColor")
 
+-- Localize all display text. Non-string values pass through unchanged, and on English clients
+-- (or untranslated strings) this is a no-op that returns the original text.
+local importedSetText = PTGuiText.SetText
+function PTGuiText:SetText(text)
+    return importedSetText(self, PTLocale.TranslateText(text))
+end
+
 function PTGuiText:New()
     local obj = setmetatable({}, self)
     local container = PTGuiLib.Get("container")

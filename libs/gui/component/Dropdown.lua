@@ -195,7 +195,15 @@ function PTGuiDropdown:Initialize(level)
         if option.initFunc then
             option:initFunc(self)
         end
+        -- Localize the displayed label for this option, but restore the original afterwards:
+        -- option funcs read self.text as a key (e.g. loadout/profile names), so the stored
+        -- value must stay in its original (English) form.
+        local rawText = option.text
+        if type(rawText) == "string" then
+            option.text = PTLocale.TranslateText(rawText)
+        end
         UIDropDownMenu_AddButton(option, level)
+        option.text = rawText
     end
 end
 
@@ -282,11 +290,18 @@ function PTGuiDropdown:UpdateText()
 end
 
 function PTGuiDropdown:SetText(text)
-    UIDropDownMenu_SetText(text, self:GetHandle())
+    -- Remember the logical (untranslated) value, but display the localized text.
+    self.LogicalText = text
+    UIDropDownMenu_SetText(PTLocale.TranslateText(text), self:GetHandle())
     return self
 end
 
 function PTGuiDropdown:GetText()
+    -- Return the logical value set via SetText, not the displayed (localized) text, so callers
+    -- that use the dropdown's text as a lookup key (e.g. frame group / selected option) keep working.
+    if self.LogicalText ~= nil then
+        return self.LogicalText
+    end
     return UIDropDownMenu_GetText(self:GetHandle())
 end
 

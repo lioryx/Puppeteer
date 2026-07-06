@@ -243,7 +243,8 @@ function PTUnitFrameGroup:Initialize()
     local label = header:CreateFontString(header, "OVERLAY", "GameFontNormal")
     self.label = label
     label:SetPoint("CENTER", header, "CENTER", 0, 0)
-    label:SetText(self.name)
+    -- Display the localized group name; self.name stays the English logical key used everywhere else.
+    label:SetText(PTLocale.TranslateText(self.name))
 
     local borderFrame = CreateFrame("Frame", "$parentBorder", container)
     self.borderFrame = borderFrame

@@ -40,7 +40,7 @@ function PTGuiTabComponent:CreateTab(name, useScrollFrame)
     if self.TabPosition == "TOP" then
         tab:SetHeight(22)
     end
-    tab:SetText(name)
+    tab:SetText(PTLocale.TranslateText(name)) -- Display localized; tabInfo.name below keeps the original key
     tab:RegisterForClicks("LeftButtonUp")
 
     tab:SetScript("OnClick", function()
