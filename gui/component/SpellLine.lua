@@ -6,6 +6,7 @@ local colorize = util.Colorize
 local SearchSpells = util.SearchSpells
 local SearchMacros = util.SearchMacros
 local SearchItems = util.SearchItems
+local T = PTLocale.T
 
 local bindHelper = PTGuiLib.Get("dropdown", UIParent)
 
@@ -347,11 +348,11 @@ function PTSpellLine:Update()
         if script ~= "" then
             _, lines = string.gsub(script, "\n", "")
             lines = lines + 1
-            info = lines.." Line"..(lines ~= 1 and "s" or "")
+            info = lines.." "..(lines == 1 and T("Line") or T("Lines"))
         else
-            info = "Empty"
+            info = T("Empty")
         end
-        self:GetContentButton():SetText("Edit Script ("..info..")")
+        self:GetContentButton():SetText(string.format(T("Edit Script (%s)"), info))
         local maxLines = 16
         if lines > maxLines then
             local lineCount = 0
@@ -365,7 +366,7 @@ function PTSpellLine:Update()
                 pos = nl + 1
                 lineCount = lineCount + 1
             end
-            script = string.sub(script, 1, nl - 1).."\n"..colorize((lines - maxLines).." More...", 0.7, 0.7, 0.7)
+            script = string.sub(script, 1, nl - 1).."\n"..colorize(string.format(T("%s More..."), lines - maxLines), 0.7, 0.7, 0.7)
         end
         if lines > 0 then
             self:GetContentButton():ApplyTooltip("Script Preview", script)
@@ -396,7 +397,7 @@ function PTSpellLine:Update()
         self:SetEnabledContent("button")
         self:GetTypeDropdown():SetText("Multi")
         local count = (binding.Data and binding.Data.Bindings and table.getn(binding.Data.Bindings)) or 0
-        self:GetContentButton():SetText("Edit Bindings ("..count..")")
+        self:GetContentButton():SetText(string.format(T("Edit Bindings (%s)"), count))
         local tooltip = {}
         for i = 1, count do
             local subBinding = binding.Data.Bindings[i]

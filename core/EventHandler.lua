@@ -11,6 +11,7 @@ local function RegisterEventHandler(events, handler)
     for _, event in ipairs(events) do
         frame:RegisterEvent(event)
     end
+    frame.PTEvents = events
     frame:SetScript("OnEvent", handler)
     table.insert(EventHandlerFrames, frame)
 end
@@ -42,9 +43,7 @@ RegisterEventHandler({"UNIT_HEALTH", "UNIT_MAXHEALTH"}, function()
     if not IsRelevantUnit(unit) then
         return
     end
-    for ui in UnitFrames(unit) do
-        ui:UpdateHealth()
-    end
+    QueueRefresh(unit, "health")
 end)
 RegisterEventHandler({"UNIT_MANA", "UNIT_RAGE", "UNIT_ENERGY", "UNIT_FOCUS", "UNIT_MAXMANA", "UNIT_DISPLAYPOWER"}, function()
     local unit = arg1
@@ -52,9 +51,7 @@ RegisterEventHandler({"UNIT_MANA", "UNIT_RAGE", "UNIT_ENERGY", "UNIT_FOCUS", "UN
         return
     end
 
-    for ui in UnitFrames(unit) do
-        ui:UpdatePower()
-    end
+    QueueRefresh(unit, "power")
     
     if unit == "player" then
         ReapplySpellsTooltip()
@@ -68,11 +65,9 @@ RegisterEventHandler("UNIT_AURA", function()
     if unit == "player" then
         util.MarkSpellCostCacheDirty()
     end
-    PTUnit.Get(unit):UpdateAuras()
-    for ui in UnitFrames(unit) do
-        ui:UpdateAuras()
-        ui:UpdateHealth() -- Update health because there may be an aura that changes health bar color
-    end
+    local cache = PTUnit.Get(unit)
+    if cache.NativeIncremental and UnitIsVisible(PTClientAPI.QueryUnit(unit)) then return end
+    QueueRefresh(unit, "aura")
 end)
 RegisterEventHandler({"PARTY_MEMBERS_CHANGED", "RAID_ROSTER_UPDATE"}, function()
     CheckGroupThrottled()
@@ -88,14 +83,14 @@ RegisterEventHandler("PLAYER_TARGET_CHANGED", function()
         ui:EvaluateTarget()
     end
     local exists, guid = UnitExists("target")
-    if util.IsSuperWowPresent() then
+    if util.HasGUIDUnits() then
         PTUnit.UpdateGuidCaches()
     end
     
     PTUnit.Get("target"):UpdateAll()
-    if util.IsSuperWowPresent() then
+    if util.HasGUIDUnits() then
         GuidRoster.SetUnitGuid("target", guid)
-        PTHealPredict.SetRelevantGUIDs(GuidRoster.GetTrackedGuids())
+        if PTHealPredict then PTHealPredict.SetRelevantGUIDs(GuidRoster.GetTrackedGuids()) end
     end
 
     if exists then
@@ -106,6 +101,7 @@ RegisterEventHandler("PLAYER_TARGET_CHANGED", function()
         return
     end
 
+    UpdateRaidMarkUnits()
     CheckTarget()
 end)
 RegisterEventHandler("SPELLS_CHANGED", function()
@@ -116,9 +112,13 @@ RegisterEventHandler("CHARACTER_POINTS_CHANGED", function()
     util.MarkSpellCostCacheDirty()
 end)
 RegisterEventHandler("RAID_TARGET_UPDATE", function()
+    UpdateRaidMarkUnits()
     for _, ui in ipairs(AllUnitFrames) do
         ui:UpdateRaidMark()
     end
+end)
+RegisterEventHandler("UPDATE_MOUSEOVER_UNIT", function()
+    UpdateRaidMarkUnits()
 end)
 RegisterEventHandler("UNIT_FACTION", function()
     if not IsRelevantUnit(arg1) then

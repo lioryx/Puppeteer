@@ -6,6 +6,7 @@ local PT = Puppeteer
 local util = PTUtil
 local colorize = util.Colorize
 local compost = AceLibrary("Compost-2.0")
+local TK = PTLocale.TK
 
 PTUnitFrame.owningGroup = nil
 
@@ -140,13 +141,20 @@ function PTUnitFrame:GetContainer()
     return self.container
 end
 
-function PTUnitFrame:Show()
+function PTUnitFrame:Show(deferUpdate)
+    local identity = PTClientAPI.GetGUID(self:GetResolvedUnit())
+    local refresh = not self:IsShown() or self.shownIdentity ~= identity
+    self.shownIdentity = identity
     self.container:Show()
     self.rootContainer:Show()
-    self:UpdateAll()
+    if refresh then self.needsFullUpdate = true; self.nativeAuraView = nil end
+    if self.needsFullUpdate and not deferUpdate then self:UpdateAll() end
 end
 
 function PTUnitFrame:Hide()
+    if self.hovered and util.IsSuperWowPresent() then SetMouseoverUnit(nil) end
+    self.hovered = nil
+    if self.button and self.button.SetAttribute then self.button:SetAttribute("unit", nil) end
     if not self:IsFake() then
         self.container:Hide()
         self.rootContainer:Hide()
@@ -172,6 +180,11 @@ function PTUnitFrame:RegisterClicks()
 end
 
 function PTUnitFrame:UpdateAll()
+    self.needsFullUpdate = nil
+    self.nativeAuraView = nil
+    if self.button and self.button.SetAttribute and PTClientAPI.Enabled and PTClientAPI.Capabilities.GUID then
+        self.button:SetAttribute("unit", self.hovered and PTOptions.SetMouseover and PTClientAPI.QueryUnit(self:GetResolvedUnit()) or nil)
+    end
     self:UpdateAuras()
     self:UpdateHealth()
     self:UpdatePower()
@@ -449,7 +462,7 @@ function PTUnitFrame:UpdateHealth()
     local fake = self:IsFake()
     if not UnitExists(self.unit) and not fake then
         if self.isCustomUnit or self.unit == "target" then
-            self.healthText:SetText(colorize(self.unit ~= "target" and "Too Far" or "", 0.7, 0.7, 0.7))
+            self.healthText:SetText(colorize(self.unit ~= "target" and TK("UnitStatus.Too Far", "Too Far") or "", 0.7, 0.7, 0.7))
             self.missingHealthText:SetText("")
             self:SetHealthBarValue(0)
             self.powerBar:SetValue(0)
@@ -475,7 +488,7 @@ function PTUnitFrame:UpdateHealth()
 
     if not UnitIsConnected(unit) and (not fake or not fakeOnline) then
         self.nameText:SetText(self:ColorizeText(unitName, profile.NameText.Color))
-        self.healthText:SetText(colorize("Offline", 0.7, 0.7, 0.7))
+        self.healthText:SetText(colorize(TK("UnitStatus.Offline", "Offline"), 0.7, 0.7, 0.7))
         self.missingHealthText:SetText("")
         self:SetHealthBarValue(0)
         self.powerBar:SetValue(0)
@@ -524,18 +537,18 @@ function PTUnitFrame:UpdateHealth()
         local text
         if cache:IsBeingResurrected() then
             if cache:GetResurrectionCasts() > 1 then
-                text = colorize("DEAD", 0.8, 1, 0.8)
+                text = colorize(TK("UnitStatus.DEAD", "DEAD"), 0.8, 1, 0.8)
             else
-                text = colorize("DEAD", 0.3, 1, 0.3)
+                text = colorize(TK("UnitStatus.DEAD", "DEAD"), 0.3, 1, 0.3)
             end
         else
-            text = colorize("DEAD", 1, 0.3, 0.3)
+            text = colorize(TK("UnitStatus.DEAD", "DEAD"), 1, 0.3, 0.3)
         end
 
         -- Check for Feign Death so the healer doesn't get alarmed
         local feign = self:GetCache():HasBuffIDOrName(5384, "Feign Death")
         if feign then
-            text = "Feign"
+            text = TK("UnitStatus.Feign", "Feign")
         end
 
         healthText:SetText(text)
@@ -549,7 +562,7 @@ function PTUnitFrame:UpdateHealth()
             self.lastHealthPercent = 0
         end
     elseif UnitIsGhost(unit) then
-        healthText:SetText(colorize("Ghost", 1, 0.3, 0.3))
+        healthText:SetText(colorize(TK("UnitStatus.Ghost", "Ghost"), 1, 0.3, 0.3))
         missingHealthText:SetText("")
         self:SetHealthBarValue(0)
         self.powerBar:SetValue(0)
@@ -605,7 +618,7 @@ function PTUnitFrame:UpdateHealth()
         self.lastHealthPercent = healthPercent
 
         if self:GetCache():HasBuffIDOrName(27827, "Spirit of Redemption") then
-            healthText:SetText(colorize("Spirit", 1, 0.3, 0.3))
+            healthText:SetText(colorize(TK("UnitStatus.Spirit", "Spirit"), 1, 0.3, 0.3))
         end
     end
 
@@ -772,7 +785,7 @@ local AURA_DURATION_TEXT_FLASH_THRESHOLD = 5
 local AURA_DURATION_TEXT_LOW_THRESHOLD = 30
 -- A map of all seconds below the flash threshold to an array of colors to interpolate
 local durationTextFlashColorsRange
-if util.IsSuperWowPresent() then
+if util.HasAuraTimers() then
     local flashColorsReset = {{1, 1, 0.75}, {1, 0.7, 0.55}, {1, 0.6, 0.6}}
     local flashColors = {{1, 1, 0.25}, {1, 0.6, 0.35}, {1, 0.4, 0.4}}
 
@@ -803,8 +816,9 @@ function PTUnitFrame:AllocateAura()
     stackText:SetTextColor(1, 1, 1)
 
     -- Duration display, only used when SuperWoW is present
-    if util.IsSuperWowPresent() then
-        local duration = CreateFrame("Model", nil, frame, "CooldownFrameTemplate")
+    if util.HasAuraTimers() then
+        local duration = PTClientAPI.CreateCooldown and PTClientAPI.CreateCooldown(frame)
+        duration = duration or CreateFrame("Model", nil, frame, "CooldownFrameTemplate")
         duration.noCooldownCount = true
         duration:SetAlpha(0.8)
         local durationOverlayFrame = CreateFrame("Frame", nil, frame)
@@ -838,7 +852,7 @@ function PTUnitFrame:AllocateAura()
         end
         local SetSequenceTime = duration.SetSequenceTime
         local GetTime = GetTime
-        duration:SetScript("OnUpdateModel", function()
+        local function updateModel()
             if duration.stopping == 0 then
                 duration:SetAlpha(0.8)
                 local time = GetTime()
@@ -863,7 +877,19 @@ function PTUnitFrame:AllocateAura()
                 durationText:SetSeconds(nil)
                 SetSequenceTime(duration, 0, 0)
             end
-        end)
+        end
+        if duration.nativeCooldown then
+            PTClientAPI.TrackCooldown(duration, function(time)
+                local remaining = (duration.nativeStart or 0) + (duration.nativeDuration or 0) - time
+                local seconds = math.max(0, math.floor(remaining))
+                if remaining > 0 and seconds <= (duration.displayAt or AURA_DURATION_TEXT_FLASH_THRESHOLD) then
+                    if durationText.seconds ~= seconds or seconds <= AURA_DURATION_TEXT_FLASH_THRESHOLD then
+                        duration.seconds, duration.secondsPrecise = seconds, remaining
+                        duration.UpdateText()
+                    end
+                elseif durationText.seconds ~= nil then durationText:SetSeconds(nil) end
+            end)
+        else duration:SetScript("OnUpdateModel", updateModel) end
         return {["frame"] = frame, ["icon"] = icon, ["border"] = border, ["stackText"] = stackText, ["overlay"] = durationOverlayFrame, 
             ["durationText"] = durationText, ["duration"] = duration}
     end
@@ -952,14 +978,19 @@ function PTUnitFrame.AuraButton_OnLeave()
     this.unitFrame.button:GetScript("OnLeave")()
 end
 
-function PTUnitFrame:ReleaseAuras()
+function PTUnitFrame:ReleaseAuras(retain)
     if table.getn(self.auraIcons) == 0 then
         return
     end
     -- Release all icons back to the icon pool
     for _, aura in ipairs(self.auraIcons) do
+        if retain and aura.frame.auraData and aura.frame.auraData.classic then
+            self.retainedAuras = self.retainedAuras or {}
+            self.retainedAuras[aura.frame.auraData] = aura
+        else
         local frame = aura.frame
         frame:Hide()
+        frame.auraData = nil
         frame:ClearAllPoints()
 
         local icon = aura.icon
@@ -978,14 +1009,39 @@ function PTUnitFrame:ReleaseAuras()
             table.insert(self.auraButtonPool, button)
         end
 
-        if util.IsSuperWowPresent() then
+        if util.HasAuraTimers() then
             aura.durationText:SetSeconds(nil)
             CooldownFrame_SetTimer(aura.duration, 0, 0, 0)
         end
 
         table.insert(self.auraIconPool, aura)
+        aura.renderState = nil
+        end
     end
     self.auraIcons = compost:Erase(self.auraIcons)
+end
+
+function PTUnitFrame:GetAuraComponent(data)
+    local component = self.retainedAuras and self.retainedAuras[data]
+    if component then
+        self.retainedAuras[data] = nil
+        table.insert(self.auraIcons, component)
+        return component
+    end
+    return self:GetUnusedAura()
+end
+
+function PTUnitFrame:ReleaseUnusedAuras()
+    if not self.retainedAuras or not next(self.retainedAuras) then return end
+    local displayed = self.auraIcons
+    self.auraIcons = compost:GetTable()
+    for data, component in pairs(self.retainedAuras) do
+        table.insert(self.auraIcons, component)
+        self.retainedAuras[data] = nil
+    end
+    self:ReleaseAuras()
+    compost:Reclaim(self.auraIcons)
+    self.auraIcons = displayed
 end
 
 do
@@ -1025,7 +1081,7 @@ function PTUnitFrame:UpdateAuras()
     local unit = self.unit
     local enemy = self:IsEnemy()
 
-    self:ReleaseAuras()
+    self:ReleaseAuras(self:GetCache().NativeAuras and profile.AuraTracker.Height >= 1)
 
     if profile.AuraTracker.Height < 1 then
         return
@@ -1080,7 +1136,7 @@ function PTUnitFrame:UpdateAuras()
     if not enemy then
         table.sort(debuffs, self.DebuffSorter)
         util.AppendArrayElements(debuffs, typedDebuffs)
-    elseif util.IsSuperWowPresent() then
+    elseif util.HasAuraTimers() then
         table.sort(debuffs, enemyDebuffSorter)
     end
 
@@ -1101,19 +1157,20 @@ function PTUnitFrame:UpdateAuras()
     local xOffset = 0
     local yOffset = profile.TrackedAurasAlignment == "TOP" and 0 or origSize - auraSize
     for _, buff in ipairs(buffs) do
-        local aura = self:GetUnusedAura()
+        local aura = self:GetAuraComponent(buff)
         self:CreateAura(aura, buff, xOffset, -yOffset, "Buff", auraSize)
         xOffset = xOffset + auraSize + spacing
     end
     xOffset = 0
     for _, debuff in ipairs(debuffs) do
-        local aura = self:GetUnusedAura()
+        local aura = self:GetAuraComponent(debuff)
         self:CreateAura(aura, debuff, xOffset, -yOffset, "Debuff", auraSize)
         xOffset = xOffset - auraSize - spacing
     end
     compost:Reclaim(buffs)
     compost:Reclaim(debuffs)
     compost:Reclaim(typedDebuffs)
+    self:ReleaseUnusedAuras()
     Puppeteer.EndTiming("UFUpdateAuras")
 end
 
@@ -1192,10 +1249,14 @@ function PTUnitFrame:CreateAura(component, aura, xOffset, yOffset, type, size)
     local stacks = aura.stacks
     local name = aura.name
     local frame = component.frame
+    local state = component.renderState or {}
+    local layoutChanged = state.size ~= size or state.x ~= xOffset or state.y ~= yOffset or state.kind ~= type
+    if layoutChanged then
     frame:SetWidth(size)
     frame:SetHeight(size)
     frame:SetPoint(type == "Buff" and "TOPLEFT" or "TOPRIGHT", xOffset, yOffset)
     frame:Show()
+    end
     frame.unitFrame = self
     frame.aura = component
     frame.auraData = aura
@@ -1203,30 +1264,35 @@ function PTUnitFrame:CreateAura(component, aura, xOffset, yOffset, type, size)
     frame.auraType = type
 
     local icon = component.icon
-    icon:SetAllPoints(frame)
-    icon:SetTexture(aura.texture)
+    if layoutChanged then icon:SetAllPoints(frame) end
+    if state.texture ~= aura.texture then icon:SetTexture(aura.texture) end
 
     local button = component.button
-    button:SetAllPoints(frame)
+    if layoutChanged and not button.IsHeld then button:SetAllPoints(frame) end
 
-    if util.IsSuperWowPresent() then
+    if layoutChanged and util.HasAuraTimers() then
         local overlay = component.overlay
         overlay:SetAllPoints()
 
         local duration = component.duration
         duration:SetAllPoints()
-        duration:SetScale(size * 0.0275)
+        duration:SetScale(duration.nativeCooldown and 1 or size * 0.0275)
     end
     
-    if stacks > 1 then
+    if layoutChanged or state.stacks ~= stacks then
+      if stacks > 1 then
         local stackText = component.stackText
         stackText:SetPoint("CENTER", frame, "CENTER", 0, 0)
         stackText:SetFont("Fonts\\FRIZQT__.TTF", math.ceil(size * (stacks < 10 and 0.75 or 0.6)))
         stackText:SetText(stacks)
+      else component.stackText:SetText("") end
     end
 
+    local owner = aura.time and aura.time.owner
+    local enemy = self:IsEnemy()
+    if state.kind ~= type or state.name ~= name or state.debuffType ~= aura.type or state.owner ~= owner or state.enemy ~= enemy then
     if type == "Buff" then
-        if selfBorderedBuffs[aura.name] and aura.time and UnitIsUnit(aura.time.owner, "player") then
+        if selfBorderedBuffs[aura.name] and owner and UnitIsUnit(owner, "player") then
             local border = component.border
             border:Show()
             border:SetVertexColor(1, 1, 0)
@@ -1237,21 +1303,28 @@ function PTUnitFrame:CreateAura(component, aura, xOffset, yOffset, type, size)
         local border = component.border
         border:Show()
         local color = debuffTypeBorderColors[aura.type] or debuffTypeBorderColors["Other"]
-        if aura.time and UnitIsUnit(aura.time.owner, "player") and self:IsEnemy() then
+        if owner and UnitIsUnit(owner, "player") and self:IsEnemy() then
             border:SetVertexColor(1, 1, 0)
         else
             border:SetVertexColor(color[1], color[2], color[3])
         end
     end
+    end
 
+    local timingChanged = state.start ~= (aura.time and aura.time.startTime) or state.duration ~= (aura.time and aura.time.duration)
+    if timingChanged then
     if aura.time then
         local startTime = aura.time.startTime
         local endTime = aura.time.endTime
         local duration = aura.time.duration
         if endTime - GetTime() > -4 then -- Don't display duration if the predicted time has lapsed
             local durationUI = component.duration
+            component.overlay:Show()
 
-            CooldownFrame_SetTimer(durationUI, startTime, duration, 1)
+            if durationUI.nativeCooldown then
+                durationUI.nativeStart, durationUI.nativeDuration = startTime, duration
+                durationUI:SetCooldown(startTime, duration)
+            else CooldownFrame_SetTimer(durationUI, startTime, duration, 1) end
 
             if duration < 60 then
                 durationUI.displayAt = PTOptions.ShowAuraTimesAt.Short
@@ -1263,9 +1336,22 @@ function PTUnitFrame:CreateAura(component, aura, xOffset, yOffset, type, size)
 
             -- To prevent having a frame where the duration is not updated
             component.durationText:SetSeconds(nil)
-            util.CallWithThis(durationUI, durationUI:GetScript("OnUpdateModel"))
+            if not durationUI.nativeCooldown then
+                util.CallWithThis(durationUI, durationUI:GetScript("OnUpdateModel"))
+            end
         end
+    elseif component.duration then
+        component.duration:Hide()
+        component.durationText:SetSeconds(nil)
+        component.overlay:Hide()
     end
+    end
+    state.size, state.x, state.y, state.kind = size, xOffset, yOffset, type
+    state.texture, state.stacks, state.name = aura.texture, stacks, name
+    state.debuffType, state.owner = aura.type, owner
+    state.enemy = enemy
+    state.start, state.duration = aura.time and aura.time.startTime, aura.time and aura.time.duration
+    component.renderState = state
 end
 
 function PTUnitFrame:Initialize()
@@ -1428,6 +1514,9 @@ function PTUnitFrame:Initialize()
         end
         PT.ApplySpellsTooltip(attachTooltipTo, unit, self.button)
         self.hovered = true
+        if PTClientAPI.Enabled and PTClientAPI.Capabilities.GUID and self.button.SetAttribute and PTOptions.SetMouseover then
+            self.button:SetAttribute("unit", PTClientAPI.QueryUnit(self:GetResolvedUnit()))
+        end
         self:UpdateHealth()
         if PTOptions.SetMouseover and util.IsSuperWowPresent() then
             SetMouseoverUnit(self:GetResolvedUnit())
@@ -1439,6 +1528,7 @@ function PTUnitFrame:Initialize()
     button:SetScript("OnLeave", function()
         PT.HideSpellsTooltip()
         self.hovered = false
+        if self.button.SetAttribute then self.button:SetAttribute("unit", nil) end
         self:UpdateHealth()
         if PTOptions.SetMouseover and util.IsSuperWowPresent() then
             SetMouseoverUnit(nil)
@@ -1742,6 +1832,7 @@ local function PTArrowUpdater_OnUpdate()
 
         if enemy then
             local facingAngle = util.GetFacingAngle(unit)
+            if not facingAngle then arrow:Hide(); return end
             if not (PTUnit.Get(unit):GetDistance() > unitFrame:GetOutOfRangeThreshold() - 1) and 
                     (facingAngle < (math.pi * 0.5) or facingAngle > (math.pi * 1.5)) then
                 arrow:Hide()
@@ -1750,7 +1841,7 @@ local function PTArrowUpdater_OnUpdate()
         end
         arrow:Show()
         local cameraAngle = util.GetCameraFacingAngle(unit)
-        arrow:SetDirection(cameraAngle)
+        if cameraAngle then arrow:SetDirection(cameraAngle) else arrow:Hide() end
     else
         arrow:Hide()
     end

@@ -23,6 +23,7 @@ libs\ace\ItemBonusLib-1.0\ItemBonusLib-1.0.lua
 libs\ace\Banzai-1.0\Banzai-1.0.lua
 libs\ace\HealComm-1.0\HealComm-1.0.lua
 
+libs\ClientAPI.lua
 libs\UnitProxy.lua
 libs\Util.lua
 
@@ -32,6 +33,7 @@ locale\ptBR.lua
 locale\deDE.lua
 locale\ruRU.lua
 locale\zhCN.lua
+locale\UI.lua
 
 libs\gui\PTGuiLib.lua
 libs\gui\Component.lua
@@ -59,6 +61,7 @@ gui\component\uf\Arrow.lua
 
 Puppeteer.lua
 core\SpellsTooltip.lua
+core\RefreshQueue.lua
 core\EventHandler.lua
 core\UnitTracker.lua
 core\Command.lua
@@ -94,3 +97,8 @@ libs\AuraTracker.lua
 libs\PTUnit.lua
 libs\ShaguUtil.lua
 libs\HealPredict.lua
+
+libs\ClassicAuras.lua
+libs\ClassicCasting.lua
+libs\ClassicHealing.lua
+libs\ClassicRuntime.lua

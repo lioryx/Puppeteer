@@ -19,12 +19,14 @@ local GetClass = util.GetClass
 local GetPowerType = util.GetPowerType
 local UseItem = util.UseItem
 local GetItemCount = util.GetItemCount
+local T = PTLocale.T
 
 PartyUnits = util.PartyUnits
 PetUnits = util.PetUnits
 TargetUnits = util.TargetUnits
 RaidUnits = util.RaidUnits
 RaidPetUnits = util.RaidPetUnits
+RaidMarkUnits = util.RaidMarkUnits
 AllUnits = util.AllUnits
 AllUnitsSet = util.AllUnitsSet
 AllCustomUnits = util.CustomUnits
@@ -52,6 +54,8 @@ PTUnitFrames = {}
 -- Key: Unit frame group name | Value: The group
 UnitFrameGroups = {}
 
+RaidMarkGroupName = "Raid Mark"
+
 CustomUnitGUIDMap = PTUnitProxy and PTUnitProxy.CustomUnitGUIDMap or {}
 GUIDCustomUnitMap = PTUnitProxy and PTUnitProxy.GUIDCustomUnitMap or {}
 
@@ -74,7 +78,7 @@ local function OpenUnitFramesIterator()
     -- UnitFrames function definition.
     -- Returns an iterator for the unit frames of the unit.
     -- These iterators have a serious problem in that they do not support concurrent iteration.
-    if util.IsSuperWowPresent() then
+    if util.HasGUIDUnits() then
         local EMPTY_UIS = {}
         local PTUnitFrames = PTUnitFrames
         local GuidUnitMap = PTGuidRoster.GuidUnitMap
@@ -190,6 +194,66 @@ function CreateUnitFrameGroup(groupName, environment, units, petGroup, profile, 
     return uiGroup
 end
 
+function UpdateRaidMarkUnits()
+    local group = UnitFrameGroups[RaidMarkGroupName]
+    if not group then
+        return
+    end
+
+    if not util.HasGUIDUnits() then
+        for unit, ui in pairs(group.uis) do
+            if UnitExists(unit) and GetRaidTargetIndex(unit) then
+                ui:Show()
+            else
+                ui:Hide()
+            end
+        end
+        group:EvaluateShown()
+        return
+    end
+
+    local unitType = "raidmark"
+    local markedGuids = {}
+    local markedGuidOrder = {}
+    local function addMarkedGuid(guid)
+        if guid and not markedGuids[guid] then
+            markedGuids[guid] = 1
+            table.insert(markedGuidOrder, guid)
+        end
+    end
+    for guid, _ in pairs(PTGuidRoster.GuidUnitMap) do
+        if UnitExists(guid) and GetRaidTargetIndex(guid) then
+            addMarkedGuid(guid)
+        end
+    end
+    for _, unit in ipairs({"target", "mouseover"}) do
+        local exists, guid = UnitExists(unit)
+        if exists and GetRaidTargetIndex(unit) then
+            addMarkedGuid(guid)
+        end
+    end
+
+    local currentUnitsByGuid = {}
+    for _, unit in ipairs(PTUnitProxy.CustomUnitsMap[unitType]) do
+        local guid = PTUnitProxy.CustomUnitGUIDMap[unit]
+        if guid then
+            if markedGuids[guid] then
+                currentUnitsByGuid[guid] = unit
+            else
+                PTUnitProxy.SetCustomUnitGuid(unit, nil, true)
+            end
+        end
+    end
+
+    for _, guid in ipairs(markedGuidOrder) do
+        if not currentUnitsByGuid[guid] then
+            PTUnitProxy.SetGuidUnitType(guid, unitType, true)
+        end
+    end
+
+    PTUnitProxy.UpdateUnitTypeFrames(unitType)
+end
+
 local function initUnitFrames()
     local getSelectedProfile = PuppeteerSettings.GetSelectedProfile
     CreateUnitFrameGroup("Party", "party", PartyUnits, false, getSelectedProfile("Party"))
@@ -197,9 +261,16 @@ local function initUnitFrames()
     CreateUnitFrameGroup("Raid", "raid", RaidUnits, false, getSelectedProfile("Raid"))
     CreateUnitFrameGroup("Raid Pets", "raid", RaidPetUnits, true, getSelectedProfile("Raid Pets"))
     CreateUnitFrameGroup("Target", "all", TargetUnits, false, getSelectedProfile("Target"), false)
-    if util.IsSuperWowPresent() then
+    if util.HasGUIDUnits() then
+        CreateUnitFrameGroup(RaidMarkGroupName, "all", RaidMarkUnits, false, getSelectedProfile(RaidMarkGroupName), false)
         CreateUnitFrameGroup("Focus", "all", PTUnitProxy.CustomUnitsMap["focus"], false, getSelectedProfile("Focus"), false)
         CreateUnitFrameGroup("Enemy", "all", PTUnitProxy.CustomUnitsMap["enemy"], false, getSelectedProfile("Enemy"), false)
+    else
+        local raidMarkGroup = CreateUnitFrameGroup(RaidMarkGroupName, "all", util.AllRealUnits, false, getSelectedProfile(RaidMarkGroupName), false)
+        for _, ui in pairs(raidMarkGroup.uis) do
+            ui:Hide()
+        end
+        raidMarkGroup:EvaluateShown()
     end
 
     local baseCondition = UnitFrameGroups["Target"].ShowCondition
@@ -215,6 +286,28 @@ end
 
 function OnAddonLoaded()
     PuppeteerSettings.SetDefaults()
+    if PTOptions.UseClassicAPI == nil then PTOptions.UseClassicAPI = true end
+    PTClientAPI.Configure(PTOptions.UseClassicAPI, true)
+    if PTClientAPI.Capabilities.GUID then util.EnabledModFeatures["GUID Units"] = "ClassicAPI" end
+    if PTClientAPI.Capabilities.GUID then util.EnabledModFeatures["Mouseover"] = "ClassicAPI" end
+    if PTClientAPI.Capabilities.Casts then util.EnabledModFeatures["Heal Predictions"] = "ClassicAPI" end
+    if PTClientAPI.Capabilities.AuraSlots then util.EnabledModFeatures["Aura Timers"] = "ClassicAPI" end
+    if PTClientAPI.Capabilities.Position then
+        util.EnabledModFeatures["Friendly Position"] = "ClassicAPI"
+        util.EnabledModFeatures["Enemy Position"] = "ClassicAPI"
+    end
+    if not util.IsUnitXPSP3Present() then
+        if PTClientAPI.Capabilities.Distance then
+            util.EnabledModFeatures["Friendly Distance"] = "ClassicAPI"
+            util.EnabledModFeatures["Enemy Distance"] = "ClassicAPI"
+        end
+        if PTClientAPI.Capabilities.Sight then util.EnabledModFeatures["LOS"] = "ClassicAPI" end
+    end
+    if not util.HasGUIDUnits() then
+        _G.PTGuidRoster = nil
+        GuidRoster = nil
+        if not util.IsSuperWowPresent() then _G.PTHealPredict = nil end
+    end
 
     if PTBindings == nil then
         GenerateDefaultBindings()
@@ -228,7 +321,7 @@ function OnAddonLoaded()
         SetCVar("NP_EnableSpellHealEvents", 1)
     end
 
-    if util.IsSuperWowPresent() then
+    if util.HasGUIDUnits() then
         -- In case other addons override unit functions, we want to make sure we're using their functions
         PTUnitProxy.CreateUnitProxies()
 
@@ -252,19 +345,20 @@ function OnAddonLoaded()
     AssignedRoles = _G.PTRoleCache[GetRealmName()]
     PruneAssignedRoles()
 
-    if util.IsSuperWowPresent() then
+    if util.HasGUIDUnits() then
         PTUnit.UpdateGuidCaches()
 
         local customUnitUpdater = CreateFrame("Frame", "PTCustomUnitUpdater")
         local nextUpdate = GetTime() + 0.25
         -- Older versions of SuperWoW had an issue where units that aren't part of normal units wouldn't receive events,
         -- so updates are done manually
-        local needsManualUpdates = util.SuperWoWFeatureLevel < util.SuperWoW_v1_4
+        local needsManualUpdates = not util.IsSuperWowPresent() or util.SuperWoWFeatureLevel < util.SuperWoW_v1_4
         local existing = {}
         local nextCleanup = GetTime() + 10
-        customUnitUpdater:SetScript("OnUpdate", function()
-            if GetTime() > nextUpdate then
+        local function updateCustomUnits()
+            if GetTime() >= nextUpdate then
                 nextUpdate = GetTime() + 0.25
+                if PTClientAPI.ExpireCasts then PTClientAPI.ExpireCasts() end
 
                 for guid, units in pairs(GUIDCustomUnitMap) do
                     local exists = UnitExists(guid) == 1
@@ -274,14 +368,13 @@ function OnAddonLoaded()
                         needsUpdate = true
                     end
 
-                    if needsManualUpdates or needsUpdate then
-                        PTUnit.Get(guid):UpdateAuras()
-                        for _, unit in ipairs(units) do
-                            for ui in UnitFrames(unit) do
-                                ui:UpdateAll()
-                                ui:UpdateIncomingHealing()
-                            end
-                        end
+                    local eventCovered = PTClientAPI.Enabled and PTClientAPI.HasEventToken and PTClientAPI.HasEventToken(guid)
+                    if PTClientAPI.PollCast and not eventCovered then PTClientAPI.PollCast(guid) end
+                    if needsUpdate or (needsManualUpdates and not eventCovered) then
+                        QueueRefresh(guid, "aura", {isFullUpdate=true})
+                        QueueRefresh(guid, "health")
+                        QueueRefresh(guid, "power")
+                        QueueRefresh(guid, "heal")
                     end
                 end
 
@@ -294,7 +387,10 @@ function OnAddonLoaded()
                     end
                 end
             end
-        end)
+        end
+        if PTClientAPI.Capabilities.Timer then
+            PTClientAPI.NewScheduler(updateCustomUnits, 0.25)
+        else customUnitUpdater:SetScript("OnUpdate", updateCustomUnits) end
     else
         PTUnit.CreateCaches()
     end
@@ -309,14 +405,14 @@ function OnAddonLoaded()
             if script then
                 local ok, result = pcall(script)
                 if not ok then
-                    DEFAULT_CHAT_FRAME:AddMessage(colorize("[Puppeteer] ", 1, 0.4, 0.4)..colorize("ERROR: ", 1, 0.2, 0.2)
-                        ..colorize("The Load Script produced an error! If this causes Puppeteer to fail to load, "..
-                            "you will need to manually edit the script in your game files.", 1, 0.4, 0.4))
-                    DEFAULT_CHAT_FRAME:AddMessage(colorize("OnLoad Script Error: "..tostring(result), 1, 0, 0))
+                    DEFAULT_CHAT_FRAME:AddMessage(colorize("[Puppeteer] ", 1, 0.4, 0.4)..colorize(T("ERROR: "), 1, 0.2, 0.2)
+                        ..colorize(T("The Load Script produced an error! If this causes Puppeteer to fail to load, "..
+                            "you will need to manually edit the script in your game files."), 1, 0.4, 0.4))
+                    DEFAULT_CHAT_FRAME:AddMessage(colorize(T("OnLoad Script Error: ")..tostring(result), 1, 0, 0))
                 end
             else
-                DEFAULT_CHAT_FRAME:AddMessage(colorize("[Puppeteer] ", 1, 0.4, 0.4)..colorize("ERROR: ", 1, 0.2, 0.2)
-                    ..colorize("The Load Script failed to load: "..err, 1, 0.4, 0.4))
+                DEFAULT_CHAT_FRAME:AddMessage(colorize("[Puppeteer] ", 1, 0.4, 0.4)..colorize(T("ERROR: "), 1, 0.2, 0.2)
+                    ..colorize(T("The Load Script failed to load: ")..err, 1, 0.4, 0.4))
             end
         end
     end
@@ -324,19 +420,8 @@ function OnAddonLoaded()
     if PTHealPredict then
         PTHealPredict.OnLoad()
 
-        PTHealPredict.HookUpdates(function(guid, incomingHealing, incomingDirectHealing)
-            if not PTOptions.UseHealPredictions then
-                return
-            end
-            local units = GuidRoster.GetUnits(guid)
-            if not units then
-                return
-            end
-            for _, unit in ipairs(units) do
-                for ui in UnitFrames(unit) do
-                    ui:SetIncomingHealing(incomingHealing, incomingDirectHealing)
-                end
-            end
+        PTHealPredict.HookUpdates(function(guid)
+            if PTOptions.UseHealPredictions then QueueRefresh(guid, "heal") end
         end)
     else
         local roster = AceLibrary("RosterLib-2.0")
@@ -377,14 +462,14 @@ function OnAddonLoaded()
 
     SetOutOfRangeArrowEnabled(PTOptions.OutOfRangeArrow)
 
-    if util.IsSuperWowPresent() then
+    if util.HasGUIDUnits() then
         SetEnemyTrackingEnabled(PuppeteerSettings.IsExperimentEnabled("Enemy"))
     end
 
     TestUI = PTOptions.TestUI
 
     if TestUI then
-        DEFAULT_CHAT_FRAME:AddMessage(colorize("[Puppeteer] UI Testing is enabled. Use /pt testui to disable.", 1, 0.6, 0.6))
+        DEFAULT_CHAT_FRAME:AddMessage(colorize("[Puppeteer] "..T("UI Testing is enabled. Use /pt testui to disable."), 1, 0.6, 0.6))
     end
 
     initUnitFrames()
@@ -420,22 +505,22 @@ function OnAddonLoaded()
             end
             infoFrame:SetScript("OnUpdate", nil)
             if PTGlobalOptions.ShowLoadMessage then
-                DEFAULT_CHAT_FRAME:AddMessage(colorize("[Puppeteer] Use ", 0.5, 1, 0.5)..colorize("/pt help", 0, 1, 0)
-                    ..colorize(" to see commands.", 0.5, 1, 0.5))
+                DEFAULT_CHAT_FRAME:AddMessage(colorize("[Puppeteer] "..T("Use "), 0.5, 1, 0.5)..colorize("/pt help", 0, 1, 0)
+                    ..colorize(T(" to see commands."), 0.5, 1, 0.5))
             end
     
-            if not util.IsSuperWowPresent() and util.IsNampowerPresent() then
-                DEFAULT_CHAT_FRAME:AddMessage(colorize("[Puppeteer] ", 1, 0.4, 0.4)..colorize("WARNING: ", 1, 0.2, 0.2)
-                    ..colorize("You are using Nampower without SuperWoW, which will cause heal predictions to be wildly inaccurate "..
-                    "for you and your raid members! It is highly recommended to install SuperWoW.", 1, 0.4, 0.4))
+            if not util.HasGUIDUnits() and util.IsNampowerPresent() then
+                DEFAULT_CHAT_FRAME:AddMessage(colorize("[Puppeteer] ", 1, 0.4, 0.4)..colorize(T("WARNING: "), 1, 0.2, 0.2)
+                    ..colorize(T("You are using Nampower without SuperWoW, which will cause heal predictions to be wildly inaccurate "..
+                    "for you and your raid members! It is highly recommended to install SuperWoW."), 1, 0.4, 0.4))
             end
 
             if util.IsSuperWowPresent() and not HealComm:IsEventRegistered("UNIT_CASTEVENT") then
-                DEFAULT_CHAT_FRAME:AddMessage(colorize("[Puppeteer] ", 1, 0.4, 0.4)..colorize("WARNING: ", 1, 0.2, 0.2)
-                    ..colorize("You have another addon that uses a HealComm version that is incompatible with SuperWoW! "..
+                DEFAULT_CHAT_FRAME:AddMessage(colorize("[Puppeteer] ", 1, 0.4, 0.4)..colorize(T("WARNING: "), 1, 0.2, 0.2)
+                    ..colorize(T("You have another addon that uses a HealComm version that is incompatible with SuperWoW! "..
                     "This will cause wildly inaccurate heal predictions to be shown to your raid members. It is "..
                     "recommended to either unload the offending addon or copy Puppeteer's HealComm "..
-                    "into the other addon.", 1, 0.4, 0.4))
+                    "into the other addon."), 1, 0.4, 0.4))
             end
         end)
     end
@@ -448,14 +533,14 @@ function OnAddonLoaded()
             if script then
                 local ok, result = pcall(script)
                 if not ok then
-                    DEFAULT_CHAT_FRAME:AddMessage(colorize("[Puppeteer] ", 1, 0.4, 0.4)..colorize("ERROR: ", 1, 0.2, 0.2)
-                        ..colorize("The Postload Script produced an error! If this causes Puppeteer to fail to operate, "..
-                            "you may need to manually edit the script in your game files.", 1, 0.4, 0.4))
-                    DEFAULT_CHAT_FRAME:AddMessage(colorize("OnPostLoad Script Error: "..tostring(result), 1, 0, 0))
+                    DEFAULT_CHAT_FRAME:AddMessage(colorize("[Puppeteer] ", 1, 0.4, 0.4)..colorize(T("ERROR: "), 1, 0.2, 0.2)
+                        ..colorize(T("The Postload Script produced an error! If this causes Puppeteer to fail to operate, "..
+                            "you may need to manually edit the script in your game files."), 1, 0.4, 0.4))
+                    DEFAULT_CHAT_FRAME:AddMessage(colorize(T("OnPostLoad Script Error: ")..tostring(result), 1, 0, 0))
                 end
             else
-                DEFAULT_CHAT_FRAME:AddMessage(colorize("[Puppeteer] ", 1, 0.4, 0.4)..colorize("ERROR: ", 1, 0.2, 0.2)
-                    ..colorize("The Postload Script failed to load: "..err, 1, 0.4, 0.4))
+                DEFAULT_CHAT_FRAME:AddMessage(colorize("[Puppeteer] ", 1, 0.4, 0.4)..colorize(T("ERROR: "), 1, 0.2, 0.2)
+                    ..colorize(T("The Postload Script failed to load: ")..err, 1, 0.4, 0.4))
             end
         end
     end
@@ -730,7 +815,7 @@ function CheckGroup()
             SetPartyFramesEnabled(not PTOptions.DisablePartyFrames.InParty)
         end
     end
-    local superwow = util.IsSuperWowPresent()
+    local superwow = util.HasGUIDUnits()
     if superwow then
         GuidRoster.ResetRoster()
         GuidRoster.PopulateRoster()
@@ -741,7 +826,7 @@ function CheckGroup()
         if unit ~= "target" then
             if exists then
                 for ui in UnitFrames(unit) do
-                    ui:Show()
+                    ui:Show(true)
                 end
             else
                 for ui in UnitFrames(unit) do
@@ -750,25 +835,26 @@ function CheckGroup()
             end
         end
     end
+    UpdateRaidMarkUnits()
     for _, group in pairs(UnitFrameGroups) do
         group:EvaluateShown()
     end
     if not superwow then -- If SuperWoW isn't present, the units may have shifted and thus require a full scan
         PTUnit.UpdateAllUnits()
+        for _, ui in ipairs(AllUnitFrames) do ui.needsFullUpdate = true end
     end
     for _, ui in ipairs(AllUnitFrames) do
         if ui:IsShown() then
-            ui:UpdateRange()
-            ui:UpdateSight()
-            ui:UpdateAuras()
+            if ui.needsFullUpdate then ui:UpdateAll() end
             ui:UpdateIncomingHealing()
             ui:UpdateOutline()
         end
     end
     if superwow then
-        PTHealPredict.SetRelevantGUIDs(GuidRoster.GetTrackedGuids())
+        if PTHealPredict then PTHealPredict.SetRelevantGUIDs(GuidRoster.GetTrackedGuids()) end
     end
     RunTrackingScan()
+    if RefreshEventFilters then RefreshEventFilters() end
     --EndTiming("CheckGroup")
 end
 
@@ -797,11 +883,14 @@ function CheckTarget()
 end
 
 function IsRelevantUnit(unit)
-    return AllUnitsSet[unit] ~= nil or GUIDCustomUnitMap[unit]
+    if not unit then return false end
+    if AllUnitsSet[unit] ~= nil or GUIDCustomUnitMap[unit] then return true end
+    local guid = PTClientAPI.GetGUID(unit)
+    return guid and PTGuidRoster and PTGuidRoster.HasUnits(guid) or false
 end
 
 function Info(msg)
-    DEFAULT_CHAT_FRAME:AddMessage(colorize("[Puppeteer] ", 0.5, 1, 0.5)..colorize(msg, 1, 1, 0.4))
+    DEFAULT_CHAT_FRAME:AddMessage(colorize("[Puppeteer] ", 0.5, 1, 0.5)..colorize(PTLocale.TranslateText(msg), 1, 1, 0.4))
 end
 
 function print(msg)

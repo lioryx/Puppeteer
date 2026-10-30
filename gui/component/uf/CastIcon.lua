@@ -45,6 +45,7 @@ function PTCastIcon:OnAcquire()
 end
 
 function PTCastIcon:OnDispose()
+    if self.unitFrame then self.unitFrame.castOrderDirty = true end
     self.super.OnDispose(self)
     self.icon:SetVertexColor(1, 1, 1)
     self.progressOverlay:Show()
@@ -79,7 +80,7 @@ local importantCasts = {
     "Shackle Undead", "Mind Control", "Fear", "Polymorph", "Polymorph: Turtle", "Polymorph: Cow", "Polymorph: Rodent"
 }
 importantCasts = PTUtil.ToSet(importantCasts)
-PTLocale.Keys(importantCasts)
+PTLocale.AuraKeys(importantCasts)
 
 local T = PTLocale.Translate
 function PTCastIcon:Start(spellName, spellTexture, time, unit, healAmount, unitFrame)
@@ -116,7 +117,7 @@ function PTCastIcon:Start(spellName, spellTexture, time, unit, healAmount, unitF
             totalUnits = totalUnits + 1
         end
     end
-    local avgHealth = totalHealth / totalUnits
+    local avgHealth = math.max(totalHealth / math.max(totalUnits, 1), 1)
     local healPower = healAmount / avgHealth
     Puppeteer.print("Heal Power: "..healPower)
     local startSize = 9
@@ -141,6 +142,7 @@ function PTCastIcon:Start(spellName, spellTexture, time, unit, healAmount, unitF
         unitFrame.castIcons = {}
     end
     self.castIcons = unitFrame.castIcons
+    unitFrame.castOrderDirty = true
     -- Remove our own icon in case it's fading still
     if shouldBeCenter and unitFrame.castIcons[1] and PTUnitProxy.UnitIsUnit("player", unitFrame.castIcons[1].unit) then
         unitFrame.castIcons[1]:Dispose()
@@ -160,6 +162,7 @@ local endColors = {
     [false] = {1, 0.6, 0.6}
 }
 function PTCastIcon:End(successful)
+    self.unitFrame.castOrderDirty = true
     self.state = "FADING"
     self.startTime = GetTime()
     self.time = successful and 0.2 or 0.4
@@ -192,24 +195,26 @@ function PTCastIcon:Update()
 
         local castOrder = self.castOrder
         local icons = self.castIcons
-        local rankedCasts = compost:GetTable()
-        for _, icon in pairs(icons) do
-            table.insert(rankedCasts, icon)
+        local rankedCasts = self.unitFrame.rankedCasts
+        if not rankedCasts then rankedCasts = {}; self.unitFrame.rankedCasts = rankedCasts end
+        if self.unitFrame.castOrderDirty then
+            for k in pairs(rankedCasts) do rankedCasts[k] = nil end
+            for _, icon in pairs(icons) do table.insert(rankedCasts, icon) end
+            table.sort(rankedCasts, iconSorter)
+            self.unitFrame.castOrderDirty = false
         end
-        table.sort(rankedCasts, iconSorter)
         local castRank = PTUtil.IndexOf(rankedCasts, self)
         local missingHealth = self.unitFrame:GetMaxHealth() - self.unitFrame:GetCurrentHealth()
         for i, icon in ipairs(rankedCasts) do
             local healAmount = icon.healAmount
             if i == castRank then
-                local effectiveHealProportion = missingHealth / healAmount
+                local effectiveHealProportion = healAmount > 0 and missingHealth / healAmount or 0
                 local r, g, b = PTUtil.InterpolateColorsNoTable(effectiveHealColors, effectiveHealProportion)
                 self.overhealIndicator:SetTexture(r, g, b)
                 break
             end
             missingHealth = missingHealth - healAmount
         end
-        compost:Reclaim(rankedCasts)
         castOrder:SetText(tostring(castRank))
     elseif self.state == "FADING" then
         local progress = self:GetProgress()
@@ -238,5 +243,6 @@ f:SetScript("OnEvent", function()
         local icon = activeIcons[caster]
         icon.startTime = icon.startTime + pushback
         icon.endTime = icon.endTime + pushback
+        icon.unitFrame.castOrderDirty = true
     end
 end)

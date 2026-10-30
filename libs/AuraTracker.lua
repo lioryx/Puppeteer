@@ -1,6 +1,6 @@
 -- Detects casts and records the aura times in PTUnit
 
-if not PTUtil.IsSuperWowPresent() then
+if not PTUtil.HasGUIDUnits() then
     return
 end
 
@@ -130,7 +130,7 @@ local trackedCastedAuras = {
     -- Misc
     ["Curse of the Deadwood"] = 2 * 60
 }
-PTLocale.Keys(trackedCastedAuras)
+PTLocale.AuraKeys(trackedCastedAuras)
 PuppeteerSettings.TrackedCastedAuras = trackedCastedAuras
 
 -- Auras to start the timer for even though they weren't directly casted
@@ -142,10 +142,10 @@ local additionalAuras = {
     ["First Aid"] = {{"Recently Bandaged", 11196}},
     ["Power Word: Shield"] = {{"Weakened Soul", 6788}}
 }
-PTLocale.Keys(additionalAuras)
+PTLocale.AuraKeys(additionalAuras)
 for _, array in pairs(additionalAuras) do
     for _, entry in ipairs(array) do
-        entry[1] = PTLocale.T(entry[1])
+        entry[1] = PTLocale.TA(entry[1])
     end
 end
 
@@ -158,7 +158,7 @@ local aoeAuras = {
     ["Gift of the Wild"] = 100, 
     ["Battle Shout"] = 20
 }
-PTLocale.Keys(aoeAuras)
+PTLocale.AuraKeys(aoeAuras)
 
 -- Paladins always get their own special stuff..
 -- Their buffs are aoe but apply to the whole raid for a specific class
@@ -166,7 +166,7 @@ local aoeClassAuras = PTUtil.ToSet({
     "Greater Blessing of Wisdom", "Greater Blessing of Might", "Greater Blessing of Salvation", 
     "Greater Blessing of Sanctuary", "Greater Blessing of Kings", "Greater Blessing of Light"
 })
-PTLocale.Keys(aoeClassAuras)
+PTLocale.AuraKeys(aoeClassAuras)
 
 local function applyTimedAura(spellName, id, owner, units, duration)
     for _, unit in ipairs(units) do
@@ -177,7 +177,7 @@ local function applyTimedAura(spellName, id, owner, units, duration)
 end
 
 local castEventFrame = CreateFrame("Frame", "PTAuraTrackingCasts")
-castEventFrame:RegisterEvent("UNIT_CASTEVENT")
+if PTUtil.IsSuperWowPresent() then castEventFrame:RegisterEvent("UNIT_CASTEVENT") end
 castEventFrame:SetScript("OnEvent", function()
     local caster, target, event, spellID, duration = arg1, arg2, arg3, arg4, arg5
 

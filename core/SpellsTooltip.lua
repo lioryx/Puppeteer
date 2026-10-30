@@ -9,6 +9,7 @@ local GetItemCount = util.GetItemCount
 local IsValidMacro = util.IsValidMacro
 local GetResourceCost = util.GetResourceCost
 local T = PTLocale.T
+local TK = PTLocale.TK
 
 local lowToHighColors = {
     {1, 0, 0}, 
@@ -29,7 +30,7 @@ local tooltipCastsColors = {
     ["Zero"] = {1, 0.5, 0.5}
 }
 local normalFontColor = {NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b}
-local unboundText = colorize("Unbound", 0.6, 0.6, 0.6)
+local unboundText = colorize(TK("BindingStatus.Unbound", "Unbound"), 0.6, 0.6, 0.6)
 
 local targetTypes = {"Friendly", "Hostile"}
 ResurrectDisplayCache = {}
@@ -170,7 +171,7 @@ function _UpdateBindingDisplay(binding, entry)
         local cost, resource = GetResourceCost(spell)
         if cost == "unknown" then
             if needsUpdate then
-                entry.Normal = colorize(spell.." (Unknown)", 1, 0.4, 0.4)
+                entry.Normal = colorize(spell.." ("..TK("BindingStatus.Unknown", "Unknown")..")", 1, 0.4, 0.4)
                 entry.Casts = -1
             end
             return
@@ -220,7 +221,7 @@ function _UpdateBindingDisplay(binding, entry)
         entry.Normal = spellText
         entry.Casts = casts
     elseif binding.Type == "ACTION" then
-        entry.Normal = colorize(text or binding.Data, textColor)
+        entry.Normal = colorize(text or T(binding.Data), textColor)
     elseif binding.Type == "ITEM" then
         local item = binding.Data
 
@@ -250,15 +251,15 @@ function _UpdateBindingDisplay(binding, entry)
         if IsValidMacro(binding.Data) then
             text = colorize(text, textColor)
         else
-            text = colorize(text.." (Invalid Macro)", 1, 0.4, 0.4)
+            text = colorize(text.." ("..T("Invalid Macro")..")", 1, 0.4, 0.4)
         end
         entry.Normal = text
     elseif binding.Type == "SCRIPT" then
-        entry.Normal =  colorize(text or "Script", textColor)
+        entry.Normal =  colorize(text or T("Script"), textColor)
     elseif binding.Type == "MULTI" then
-        entry.Normal = colorize(text or (binding.Data.Title ~= "" and binding.Data.Title) or "Multi", textColor)
+        entry.Normal = colorize(text or (binding.Data.Title ~= "" and binding.Data.Title) or T("Multi"), textColor)
     else
-        entry.Normal = "Unhandled"
+        entry.Normal = T("Unhandled")
     end
 end
 

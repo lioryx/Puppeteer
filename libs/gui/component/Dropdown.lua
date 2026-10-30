@@ -199,11 +199,21 @@ function PTGuiDropdown:Initialize(level)
         -- option funcs read self.text as a key (e.g. loadout/profile names), so the stored
         -- value must stay in its original (English) form.
         local rawText = option.text
+        local rawTooltipTitle = option.tooltipTitle
+        local rawTooltipText = option.tooltipText
         if type(rawText) == "string" then
             option.text = PTLocale.TranslateText(rawText)
         end
+        if type(rawTooltipTitle) == "string" then
+            option.tooltipTitle = PTLocale.TranslateText(rawTooltipTitle)
+        end
+        if type(rawTooltipText) == "string" then
+            option.tooltipText = PTLocale.TranslateText(rawTooltipText)
+        end
         UIDropDownMenu_AddButton(option, level)
         option.text = rawText
+        option.tooltipTitle = rawTooltipTitle
+        option.tooltipText = rawTooltipText
     end
 end
 

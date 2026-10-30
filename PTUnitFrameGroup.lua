@@ -5,6 +5,10 @@ local _G = getfenv(0)
 local PT = Puppeteer
 local util = PTUtil
 
+local function getDisplayName(name)
+    return PTLocale.TK("FrameGroup."..name, name)
+end
+
 PTUnitFrameGroup.name = "???"
 
 PTUnitFrameGroup.profile = nil
@@ -38,7 +42,6 @@ ContextMenu:SetDynamicOptions(function(addOption, level, args)
         "disabled", true)
 
     addOption("text", "Open Settings",
-        "notCheckable", true,
         "func", function(self, gui)
             PTSettingsGui.TabFrame:Show()
         end)
@@ -103,14 +106,23 @@ function PTUnitFrameGroup:CanShowInEnvironment(environment)
 end
 
 function PTUnitFrameGroup:Show()
+    local wasShown = self.container:IsShown()
     self.container:Show()
-    for _, ui in pairs(self.uis) do
-        ui:UpdateAll()
+    if not wasShown then
+        for _, ui in pairs(self.uis) do
+            ui.nativeAuraView = nil
+            if ui:IsShown() then ui:UpdateAll() end
+        end
     end
 end
 
 function PTUnitFrameGroup:Hide()
     self.container:Hide()
+    for _, ui in pairs(self.uis) do
+        if ui.button and ui.button.SetAttribute then ui.button:SetAttribute("unit", nil) end
+        if ui.hovered and PTUtil.IsSuperWowPresent() then SetMouseoverUnit(nil) end
+        ui.hovered = nil
+    end
 end
 
 -- Used while moving frames to avoid the lag while moving over other toplevel frames
@@ -243,8 +255,7 @@ function PTUnitFrameGroup:Initialize()
     local label = header:CreateFontString(header, "OVERLAY", "GameFontNormal")
     self.label = label
     label:SetPoint("CENTER", header, "CENTER", 0, 0)
-    -- Display the localized group name; self.name stays the English logical key used everywhere else.
-    label:SetText(PTLocale.TranslateText(self.name))
+    label:SetText(getDisplayName(self.name))
 
     local borderFrame = CreateFrame("Frame", "$parentBorder", container)
     self.borderFrame = borderFrame

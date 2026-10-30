@@ -2,6 +2,7 @@ PTUtil.SetEnvironment(Puppeteer)
 local _G = getfenv(0)
 local util = PTUtil
 local colorize = util.Colorize
+local T = PTLocale.T
 
 
 ActionBinds = {}
@@ -123,8 +124,8 @@ RegisterActionBind({
     Name = "Focus",
     Description = "Add/remove a unit to your Focus frames",
     Script = function(unit, unitFrame)
-        if not util.IsSuperWowPresent() then
-            DEFAULT_CHAT_FRAME:AddMessage(colorize("You need SuperWoW to focus targets.", 1, 0.5, 0.5))
+        if not util.HasGUIDUnits() then
+            DEFAULT_CHAT_FRAME:AddMessage(colorize(T("You need SuperWoW to focus targets."), 1, 0.5, 0.5))
             return
         end
 
@@ -135,8 +136,8 @@ RegisterActionBind({
     Name = "Promote Focus",
     Description = "Move a focus to the top",
     Script = function(unit, unitFrame)
-        if not util.IsSuperWowPresent() then
-            DEFAULT_CHAT_FRAME:AddMessage(colorize("You need SuperWoW to focus targets.", 1, 0.5, 0.5))
+        if not util.HasGUIDUnits() then
+            DEFAULT_CHAT_FRAME:AddMessage(colorize(T("You need SuperWoW to focus targets."), 1, 0.5, 0.5))
             return
         end
 
@@ -148,8 +149,8 @@ RegisterActionBind({
     Name = "Demote Focus",
     Description = "Move a focus to the bottom",
     Script = function(unit, unitFrame)
-        if not util.IsSuperWowPresent() then
-            DEFAULT_CHAT_FRAME:AddMessage(colorize("You need SuperWoW to focus targets.", 1, 0.5, 0.5))
+        if not util.HasGUIDUnits() then
+            DEFAULT_CHAT_FRAME:AddMessage(colorize(T("You need SuperWoW to focus targets."), 1, 0.5, 0.5))
             return
         end
         -- TODO: Logic flawed

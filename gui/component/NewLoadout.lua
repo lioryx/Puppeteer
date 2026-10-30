@@ -1,4 +1,5 @@
 PTNewLoadout = PTGuiComponent:Extend("puppeteer_new_loadout")
+local T = PTLocale.T
 
 function PTNewLoadout:New()
     local obj = setmetatable({}, self)
@@ -71,7 +72,7 @@ function PTNewLoadout:New()
             end
             local loadouts = Puppeteer.GetBindingLoadouts()
             if loadouts[name] then
-                DEFAULT_CHAT_FRAME:AddMessage("Loadout with that name already exists!")
+                DEFAULT_CHAT_FRAME:AddMessage(T("Loadout with that name already exists!"))
                 return
             end
             local loadout = Puppeteer.NewBindingsLoadout(name, loadouts[inheritFrom])

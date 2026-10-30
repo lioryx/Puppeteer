@@ -134,6 +134,14 @@ function GetModState(present, upToDate)
     return "Detected"
 end
 
+function HasGUIDUnits()
+    return SuperWoW or PTClientAPI.Capabilities.GUID
+end
+
+function HasAuraTimers()
+    return SuperWoW or PTClientAPI.Capabilities.AuraSlots
+end
+
 function IsSuperWowPresent()
     return SuperWoW
 end
@@ -285,6 +293,7 @@ end
 CustomUnits = PTUnitProxy and PTUnitProxy.AllCustomUnits or {}
 CustomUnitsSet = PTUnitProxy and PTUnitProxy.AllCustomUnitsSet or {}
 FocusUnits = PTUnitProxy and PTUnitProxy.CustomUnitsMap["focus"] or {}
+RaidMarkUnits = PTUnitProxy and PTUnitProxy.CustomUnitsMap["raidmark"] or {}
 
 local unitArrays = {PartyUnits, PetUnits, RaidUnits, RaidPetUnits, TargetUnits}
 AllUnits = {}
@@ -589,17 +598,28 @@ function StripColors(text)
     return text
 end
 
-local coloredRoles = {
-    ["Tank"] = Colorize("Tank", 0.3, 0.6, 1),
-    ["Healer"] = Colorize("Healer", 0.2, 1, 0.2),
-    ["Damage"] = Colorize("Damage", 1, 0.4, 0.4),
-    ["No Role"] = "No Role"
+local function translateKey(key, fallback)
+    if PTLocale and PTLocale.TranslateKey then
+        return PTLocale.TranslateKey(key, fallback)
+    end
+    return fallback or key
+end
+
+local roleColors = {
+    ["Tank"] = {0.3, 0.6, 1},
+    ["Healer"] = {0.2, 1, 0.2},
+    ["Damage"] = {1, 0.4, 0.4}
 }
 function GetColoredRoleText(role)
     if not role then
-        return coloredRoles["No Role"]
+        return translateKey("Role.No Role", "No Role")
     end
-    return coloredRoles[role]
+    local text = translateKey("Role."..role, role)
+    local color = roleColors[role]
+    if color then
+        return Colorize(text, color)
+    end
+    return text
 end
 
 function IsFeigning(unit)
@@ -1312,29 +1332,76 @@ function GetKeyModifier()
     return KeyModifierMap[IsShiftKeyDown() == 1][IsControlKeyDown() == 1][IsAltKeyDown() == 1][1]
 end
 
+local keyModifierColors = {
+    ["Shift"] = {0.4, 1, 0.4},
+    ["Control"] = {0.4, 0.4, 1},
+    ["Alt"] = {1, 0.4, 0.4}
+}
+local keyModifierAbbreviations = {
+    ["Shift"] = "S",
+    ["Control"] = "C",
+    ["Alt"] = "A"
+}
+local function getLocalizedKeyModifier(id, colored)
+    local modifier = GetKeyModifier()
+    if modifier == "None" then
+        return translateKey("KeyModifier.None", "None")
+    end
+
+    local parts = SplitString(modifier, "+")
+    local text = ""
+    for _, part in ipairs(parts) do
+        if text ~= "" then
+            text = text.."+"
+        end
+        local display = id == 3 and translateKey("KeyModifier.Abbrev."..part, keyModifierAbbreviations[part])
+            or translateKey("KeyModifier."..part, part)
+        if colored then
+            display = Colorize(display, keyModifierColors[part])
+        end
+        text = text..display
+    end
+    return text
+end
+
 function GetColoredKeyModifier()
-    return KeyModifierMap[IsShiftKeyDown() == 1][IsControlKeyDown() == 1][IsAltKeyDown() == 1][2]
+    return getLocalizedKeyModifier(1, true)
 end
 
 function GetAbbreviatedKeyModifier()
-    return KeyModifierMap[IsShiftKeyDown() == 1][IsControlKeyDown() == 1][IsAltKeyDown() == 1][3]
+    return getLocalizedKeyModifier(3)
 end
 
 function GetColoredAbbreviatedKeyModifier()
-    return KeyModifierMap[IsShiftKeyDown() == 1][IsControlKeyDown() == 1][IsAltKeyDown() == 1][4]
+    return getLocalizedKeyModifier(3, true)
 end
 
 function GetKeyModifierTypeByID(id)
+    if id == 2 then
+        return GetColoredKeyModifier()
+    elseif id == 3 then
+        return GetAbbreviatedKeyModifier()
+    elseif id == 4 then
+        return GetColoredAbbreviatedKeyModifier()
+    end
     return KeyModifierMap[IsShiftKeyDown() == 1][IsControlKeyDown() == 1][IsAltKeyDown() == 1][id]
 end
 
 local nameOverrides = {
     ["LeftButton"] = "Left Button",
     ["RightButton"] = "Right Button",
-    ["MiddleButton"] = "Middle Button"
+    ["MiddleButton"] = "Middle Button",
+    ["Button5"] = "Forward",
+    ["Button4"] = "Back",
+    ["MOUSEWHEELUP"] = "Wheel Up",
+    ["MOUSEWHEELDOWN"] = "Wheel Down"
 }
 function GetButtonName(rawButton)
-    return nameOverrides[rawButton] or GetBindingText(rawButton, "KEY_")
+    local override = nameOverrides[rawButton]
+    if override then
+        return translateKey("Button."..rawButton, override)
+    end
+    return GetBindingText(rawButton, "KEY_")
 end
 
 local buttons = {"LeftButton", "MiddleButton", "RightButton", "Button4", "Button5"}
@@ -1413,6 +1480,16 @@ end
 -- 9999 if unit is not visible or UnitXP SP3 is not present.
 -- Might try to do hacky stuff for people without mods later on.
 function GetDistanceTo(unit)
+    if not UnitXPSP3 and PTClientAPI.Capabilities.Distance then
+        local resolved = PTClientAPI.ResolveUnit(unit)
+        if not resolved then return 9999 end
+        if not UnitIsConnected(resolved) then return 0 end
+        if UnitIsUnit("player", resolved) then return 0 end
+        if not UnitIsVisible(resolved) then return 9999 end
+        local squared, checked = PTClientAPI.UnitDistanceSquared(resolved)
+        if checked and squared then return math.sqrt(math.max(squared, 0)) end
+        return 9999
+    end
     return GetDistanceBetween("player", unit)
 end
 
@@ -1496,7 +1573,7 @@ end
 
 -- SuperWoW cannot provide precise distance for enemies
 function CanClientGetPreciseDistance(alsoEnemies)
-    return UnitXPSP3 or (SuperWoW and not alsoEnemies)
+    return UnitXPSP3 or PTClientAPI.Capabilities.Distance or (SuperWoW and not alsoEnemies)
 end
 
 function GetUnitPosition(unit)
@@ -1525,6 +1602,13 @@ do -- This is done to prevent crashes from checking sight too early
                 IsInSight = function(unit)
                     return UnitXP("inSight", "player", unit) -- UnitXP SP3 modded function
                 end
+            else
+                IsInSight = function(unit)
+                    if not PTClientAPI.Capabilities.Sight then return true end
+                    local resolved = PTClientAPI.ResolveUnit(unit)
+                    if not resolved then return true end
+                    return PTClientAPI.UnitInLineOfSight(resolved) ~= false
+                end
             end
             sightEnableFrame:SetScript("OnEvent", nil)
         end
@@ -1532,7 +1616,7 @@ do -- This is done to prevent crashes from checking sight too early
 end
 
 function CanClientSightCheck()
-    return UnitXPSP3
+    return UnitXPSP3 or PTClientAPI.Capabilities.Sight
 end
 
 -- From pfQuest
@@ -1546,13 +1630,14 @@ for k, v in pairs({Minimap:GetChildren()}) do
     end
 end
 function GetPlayerFacing()
-    return minimaparrow:GetFacing()
+    return minimaparrow and minimaparrow:GetFacing()
 end
 
 function GetUnitDirection(from, to)
-    local sx, sz = GetUnitPosition(from)
-    local tx, tz = GetUnitPosition(to)
+    local sx, sz, _, sm = GetUnitPosition(from)
+    local tx, tz, _, tm = GetUnitPosition(to)
 
+    if not sx or not sz or not tx or not tz or (sm and tm and sm ~= tm) then return nil end
     local dx = tx - sx
     local dz = tz - sz
 
@@ -1560,7 +1645,9 @@ function GetUnitDirection(from, to)
 end
 
 function GetFacingAngle(unit)
-    local angle = GetUnitDirection("player", unit) - GetPlayerFacing()
+    local direction, facing = GetUnitDirection("player", unit), GetPlayerFacing()
+    if not direction or not facing then return nil end
+    local angle = direction - facing
     angle = modulo(angle, math.pi * 2)
     return angle
 end
@@ -1569,6 +1656,7 @@ if VanillaUtils then
     function GetCameraFacing()
         local sx, sy = GetUnitPosition("player")
         local cx, cy = UnitXP("cameraPosition")
+        if not sx or not sy or not cx or not cy then return nil end
         return math.atan2(cy - sy, cx - sx) + math.pi
     end
 else
@@ -1576,7 +1664,9 @@ else
 end
 
 function GetCameraFacingAngle(unit)
-    local cameraAngle = GetUnitDirection("player", unit) - GetCameraFacing()
+    local direction, facing = GetUnitDirection("player", unit), GetCameraFacing()
+    if not direction or not facing then return nil end
+    local cameraAngle = direction - facing
     cameraAngle = modulo(cameraAngle, math.pi * 2)
     return cameraAngle
 end
@@ -1593,8 +1683,29 @@ end
 AllUnitsSet = ToSet(AllUnits)
 FocusUnitsSet = ToSet(FocusUnits)
 RunLater(function()
-    PTLocale.Values(ResurrectionSpells)
-    PTLocale.Keys(ResurrectionSpellsSet)
+    PTLocale.AuraValues(ResurrectionSpells)
+    PTLocale.AuraKeys(ResurrectionSpellsSet)
 end)
 
 InstanceWorldZones = ToSet({"Winter Veil Vale"}) -- Why is this an instance??
+
+local legacyPosition = GetUnitPosition
+GetUnitPosition = function(unit)
+    if PTClientAPI.Capabilities.Position then return PTClientAPI.GetPosition(unit) end
+    return legacyPosition(unit)
+end
+local legacyDistance = GetDistanceBetween
+GetDistanceBetween = function(a, b)
+    if UnitXPSP3 or not PTClientAPI.Capabilities.Position then return legacyDistance(a,b) end
+    if not UnitIsConnected(a) or not UnitIsConnected(b) then return 0 end
+    local ax, ay, az, am = PTClientAPI.GetPosition(a)
+    local bx, by, bz, bm = PTClientAPI.GetPosition(b)
+    if not ax or not ay or not az or not bx or not by or not bz or am ~= bm then return 9999 end
+    return math.sqrt((ax-bx)^2 + (ay-by)^2 + (az-bz)^2)
+end
+local legacyFacing = GetPlayerFacing
+GetPlayerFacing = function()
+    if PTClientAPI.Enabled and PTClientAPI.GetPlayerFacing then return PTClientAPI.GetPlayerFacing() end
+    return legacyFacing()
+end
+if not VanillaUtils then GetCameraFacing = GetPlayerFacing end

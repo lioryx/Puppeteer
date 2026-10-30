@@ -19,6 +19,26 @@ function SetTranslations(translations)
     end
 end
 
+function AddTranslations(translations)
+    if not Translations then
+        SetTranslations(translations)
+        return
+    end
+    for key, value in pairs(translations) do
+        Translations[key] = value
+    end
+end
+
+function TranslateKey(key, fallback)
+    local translated = Translate(key)
+    if translated ~= key then
+        return translated
+    end
+    return fallback or key
+end
+
+TK = TranslateKey
+
 function IsUsingTranslations()
     return Translations ~= nil or EXPORT_MODE
 end
@@ -56,6 +76,55 @@ function TranslateText(text)
         return Translate(text)
     end
     return text
+end
+
+function TranslateTextKey(key, text)
+    if type(text) == "string" then
+        return TranslateKey(key, text)
+    end
+    return text
+end
+
+function TranslateAura(name)
+    if name == "Power Word:Fortitude" then
+        name = "Power Word: Fortitude"
+    end
+    return TranslateKey("Aura."..name, Translate(name))
+end
+
+TA = TranslateAura
+
+function AuraArray(array)
+    if not IsUsingTranslations() then
+        return
+    end
+    for i, value in ipairs(array) do
+        array[i] = TranslateAura(value)
+    end
+end
+
+function AuraKeys(set)
+    if not IsUsingTranslations() then
+        return
+    end
+    local toInsert = compost:GetTable()
+    for key, value in pairs(set) do
+        set[key] = nil
+        toInsert[TranslateAura(key)] = value
+    end
+    for key, value in pairs(toInsert) do
+        set[key] = value
+    end
+    compost:Reclaim(toInsert)
+end
+
+function AuraValues(table)
+    if not IsUsingTranslations() then
+        return
+    end
+    for key, value in pairs(table) do
+        table[key] = TranslateAura(value)
+    end
 end
 
 function Keys(set)

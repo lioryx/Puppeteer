@@ -100,6 +100,13 @@ end
 function EvaluateTracking(unit, update)
     local UnitFrames = UnitFrames
     local cache = PTUnit.Get(unit)
+    if PTClientAPI.Capabilities.AuraSlots and cache.Unit then
+        local visible = UnitIsVisible(PTClientAPI.QueryUnit(cache.Unit)) and true or false
+        if cache.nativeWasVisible ~= visible then
+            cache.nativeWasVisible = visible
+            QueueRefresh(unit, "aura", {isFullUpdate=true})
+        end
+    end
     local distanceChanged = cache:UpdateDistance()
     local sightChanged = cache:UpdateSight()
     local new = cache:CheckNew()
@@ -136,7 +143,24 @@ function EvaluateTracking(unit, update)
     end
 end
 
+local trackingSchedule
+local function ScheduledTrackingScan()
+    RunTrackingScan()
+    return math.max(0.01, math.min(nextEval, nextRangeUpdate, nextSightUpdate) - GetTime())
+end
+
 function StartUnitTracker()
+    if trackingSchedule then trackingSchedule:Cancel(); trackingSchedule = nil end
     LoadTrackingOptions()
-    UnitTrackerFrame:SetScript("OnUpdate", RunTrackingScan)
+    preciseDistance = util.CanClientGetPreciseDistance()
+    sightTrackingEnabled = util.CanClientSightCheck()
+    nextEval = GetTime() + 0.5
+    nextRangeUpdate = GetTime() + (preciseDistance and 0.6 or 99999999)
+    nextSightUpdate = GetTime() + (sightTrackingEnabled and 0.6 or 99999999)
+    if PTClientAPI.Capabilities.Timer then
+        UnitTrackerFrame:SetScript("OnUpdate", nil)
+        trackingSchedule = PTClientAPI.NewScheduler(ScheduledTrackingScan, 0.1)
+    else
+        UnitTrackerFrame:SetScript("OnUpdate", RunTrackingScan)
+    end
 end

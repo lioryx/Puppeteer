@@ -2,7 +2,7 @@
 
 local util = PTUtil
 
-if not util.IsSuperWowPresent() then
+if not util.HasGUIDUnits() then
     return
 end
 
@@ -24,7 +24,9 @@ local f = CreateFrame("Frame", "PTEnemyUpdater")
 
 f:SetScript("OnEvent", function()
     local unit = arg1
-    if event == "PLAYER_TARGET_CHANGED" then
+    if event == "NAME_PLATE_UNIT_ADDED" then
+        unit = arg1
+    elseif event == "PLAYER_TARGET_CHANGED" then
         unit = "target"
     elseif event == "UPDATE_MOUSEOVER_UNIT" then
         unit = UnitGUID("mouseover")
@@ -36,6 +38,7 @@ f:SetScript("OnEvent", function()
         end
 
         local guid = UnitGUID(unit)
+        if not guid then return end
         if IsGuidUnitType(guid, "enemy") then -- Already enemy
             return
         end
@@ -66,8 +69,8 @@ end)
 
 local nextUpdate = GetTime() + 0.25
 local EnemyTracker_OnUpdate = function()
-    if GetTime() > nextUpdate then
-        nextUpdate = nextUpdate + 0.25
+    if GetTime() >= nextUpdate then
+        nextUpdate = GetTime() + 0.25
 
         local enemyUnits = CustomUnitsMap["enemy"]
         if not enemyUnits then
@@ -83,7 +86,7 @@ local EnemyTracker_OnUpdate = function()
             end
         end
 
-        for i = lastIndex + 1, maxEnemies - lastIndex do
+        for i = lastIndex + 1, maxEnemies do
             local enemyUnit = enemyUnits[i]
             if CustomUnitGUIDMap[enemyUnit] then
                 SetCustomUnitGuid(enemyUnit, nil)
@@ -92,13 +95,21 @@ local EnemyTracker_OnUpdate = function()
     end
 end
 
+local enemySchedule
 function SetEnemyTrackingEnabled(trackEnemies)
+    if enemySchedule then enemySchedule:Cancel(); enemySchedule = nil end
     if trackEnemies then
+        if PTClientAPI.Enabled and C_EventUtils and C_EventUtils.IsEventValid("NAME_PLATE_UNIT_ADDED") then
+            f:RegisterEvent("NAME_PLATE_UNIT_ADDED")
+        end
         f:RegisterEvent("UNIT_COMBAT")
         f:RegisterEvent("UNIT_FLAGS")
         f:RegisterEvent("PLAYER_TARGET_CHANGED")
         f:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
-        f:SetScript("OnUpdate", EnemyTracker_OnUpdate)
+        if PTClientAPI.Capabilities.Timer then
+            f:SetScript("OnUpdate", nil)
+            enemySchedule = PTClientAPI.NewScheduler(EnemyTracker_OnUpdate, 0.25)
+        else f:SetScript("OnUpdate", EnemyTracker_OnUpdate) end
     else
         f:UnregisterAllEvents()
         f:SetScript("OnUpdate", nil)

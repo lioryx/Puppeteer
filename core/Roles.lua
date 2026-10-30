@@ -4,6 +4,7 @@ local util = PTUtil
 local colorize = util.Colorize
 local GetColoredRoleText = util.GetColoredRoleText
 local SplitString = util.SplitString
+local T = PTLocale.T
 
 AssignedRoles = nil
 
@@ -331,7 +332,7 @@ function InitRoleDropdown()
     local options = {
         {
             initFunc = function(self)
-                self.text = colorize(RoleAssignInfo.Name.."'s Role", RoleAssignInfo.ClassColor)
+                self.text = colorize(string.format(T("%s's Role"), RoleAssignInfo.Name), RoleAssignInfo.ClassColor)
             end,
             notCheckable = true,
             disabled = true,
@@ -366,7 +367,7 @@ function InitRoleDropdown()
     }
     if PuppeteerSettings.IsExperimentEnabled("AutoRole") then
         table.insert(options, 6, {
-            text = colorize("Auto Detect", 1, 0.6, 0),
+            text = colorize(T("Auto Detect"), 1, 0.6, 0),
             func = function()
                 if not RoleAssignInfo.FrameGroup then
                     return

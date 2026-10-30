@@ -10,7 +10,7 @@ local GetAuraInfo = util.GetAuraInfo
 local AllUnits = util.AllUnits
 local AllRealUnits = util.AllRealUnits
 local AllUnitsSet = util.AllUnitsSet
-local superwow = util.IsSuperWowPresent()
+local function guidMode() return util.HasGUIDUnits() end
 local canGetAuraIDs = util.CanClientGetAuraIDs()
 
 local compost = AceLibrary("Compost-2.0")
@@ -48,7 +48,7 @@ PTUnit.IsNew = false
 
 -- Non-GUID function
 function CreateCaches()
-    if superwow then
+    if guidMode() then
         Puppeteer.print("Tried to create non-SuperWoW caches while using SuperWoW!")
         return
     end
@@ -63,6 +63,7 @@ function UpdateGuidCaches()
     for _, unit in ipairs(AllRealUnits) do
         local exists, guid = UnitExists(unit)
         if exists then
+            PTGuidRoster.SetUnitGuid(unit, guid)
             if not cached[guid] then
                 PTUnit:New(guid)
                 Puppeteer.EvaluateTracking(unit, true)
@@ -85,6 +86,7 @@ function UpdateGuidCaches()
         cached[garbageGuid] = nil
     end
     compost:Reclaim(prevCached)
+    if PTHealPredict then PTHealPredict.SetRelevantGUIDs(PTGuidRoster.GetTrackedGuids()) end
 end
 
 -- Likely never needed to be called when using GUIDs
@@ -96,8 +98,8 @@ end
 
 -- Get the PTUnit by unit ID. If using SuperWoW, GUID or unit ID is accepted.
 function Get(unit)
-    if superwow and AllUnitsSet[unit] then
-        return PTUnit.Cached[PTGuidRoster.GetUnitGuid(unit)] or PTUnit
+    if guidMode() then
+        return PTUnit.Cached[PTClientAPI.GetGUID(unit)] or PTUnit
     end
     return PTUnit.Cached[unit] or PTUnit
 end
@@ -115,7 +117,7 @@ function PTUnit:New(unit)
     obj.AurasPopulated = true -- To force aura fields to generate
     obj.IsNew = true
     obj.IsSelf = UnitIsUnit(unit, "player")
-    if superwow then
+    if guidMode() then
         obj.AuraTimes = compost:GetTable()
         obj.AuraTimesByName = compost:GetTable()
     end
@@ -260,6 +262,7 @@ function PTUnit:UpdateAuras()
     if not unit then
         return
     end
+    PTClientAPI.Count("auraFullScans")
 
     Puppeteer.StartTiming("PTUnitAuraUpdate")
 
@@ -379,7 +382,7 @@ end
 
 -- Looks for ID if SuperWoW/Turtle WoW is present, otherwise searches by name
 function PTUnit:HasBuffIDOrName(id, name)
-    if canGetAuraIDs then
+    if canGetAuraIDs or PTClientAPI.Capabilities.AuraSlots then
         return self:HasBuffID(id)
     end
     return self:HasBuff(name)
@@ -396,7 +399,7 @@ end
 
 -- Looks for ID if SuperWoW/Turtle WoW is present, otherwise searches by name
 function PTUnit:HasDebuffIDOrName(id, name)
-    if canGetAuraIDs then
+    if canGetAuraIDs or PTClientAPI.Capabilities.AuraSlots then
         return self:HasDebuffID(id)
     end
     return self:HasDebuff(name)
@@ -435,6 +438,8 @@ function PTUnit:GetDebuffs(name)
 end
 
 function PTUnit:ApplyTimedAura(spellName, spellID, owner, duration, isNampower)
+    local previous = self.AuraTimes[spellID] and self.AuraTimes[spellID][owner]
+    if previous and previous.nampower and not isNampower and previous.endTime > GetTime() then return end
     if not self.AuraTimes[spellID] then
         self.AuraTimes[spellID] = compost:GetTable()
     end
@@ -451,20 +456,17 @@ function PTUnit:ApplyTimedAura(spellName, spellID, owner, duration, isNampower)
         "ownerName", UnitName(owner),
         "nampower", isNampower ~= nil and isNampower ~= false
     )
-    if self.AuraTimes[spellID][owner] then
+    if self.AuraTimes[spellID][owner] and not self.NativeAuras then
         compost:Reclaim(self.AuraTimes[spellID][owner])
     end
     self.AuraTimes[spellID][owner] = entry
-    self.AuraTimesByName[spellName] = entry
+    if not self.NativeAuras then self.AuraTimesByName[spellName] = entry end
 
-    self:UpdateAuras()
-    for ui in Puppeteer.UnitFrames(self.Unit) do
-        ui:UpdateAuras()
-    end
+    Puppeteer.QueueRefresh(self.Unit, self.NativeAuras and "auraTime" or "aura")
 end
 
 function PTUnit:GetAuraTimeRemaining(name)
-    if not superwow then
+    if not guidMode() then
         return
     end
     local auraTime = self.AuraTimesByName[name]

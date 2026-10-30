@@ -3,8 +3,53 @@ PTUtil.SetEnvironment(PuppeteerSettings)
 
 local _G = getfenv(0)
 local util = PTUtil
+local T = PTLocale.T
 
 local _, playerClass = UnitClass("player")
+
+local defaultButtonNames = {
+    ["LeftButton"] = "Left",
+    ["MiddleButton"] = "Middle",
+    ["RightButton"] = "Right",
+    ["Button5"] = "Forward",
+    ["Button4"] = "Back",
+    ["MOUSEWHEELUP"] = "Wheel Up",
+    ["MOUSEWHEELDOWN"] = "Wheel Down"
+}
+
+local defaultButtonNameAliases = {
+    ["LeftButton"] = {"Left", "左"},
+    ["RightButton"] = {"Right", "右"},
+    ["MiddleButton"] = {"Middle"},
+    ["Button5"] = {"Forward"},
+    ["Button4"] = {"Back"},
+    ["MOUSEWHEELUP"] = {"Wheel Up"},
+    ["MOUSEWHEELDOWN"] = {"Wheel Down"}
+}
+
+local function getDefaultButtonName(button)
+    return PTLocale.TranslateKey("ButtonName."..button, defaultButtonNames[button] or button)
+end
+
+local function localizeDefaultButtonNames(buttonInfo)
+    for button, defaultName in pairs(defaultButtonNames) do
+        local info = buttonInfo and buttonInfo[button]
+        if info then
+            local shouldLocalize = not info.Name or info.Name == defaultName
+            if not shouldLocalize and defaultButtonNameAliases[button] then
+                for _, alias in ipairs(defaultButtonNameAliases[button]) do
+                    if info.Name == alias then
+                        shouldLocalize = true
+                        break
+                    end
+                end
+            end
+            if shouldLocalize then
+                info.Name = getDefaultButtonName(button)
+            end
+        end
+    end
+end
 
 local debuffTypeCureSpells = {
     ["PALADIN"] = {
@@ -30,7 +75,7 @@ local debuffTypeCureSpells = {
     }
 }
 for _, spells in pairs(debuffTypeCureSpells) do
-    PTLocale.Keys(spells)
+    PTLocale.AuraKeys(spells)
 end
 function UpdateTrackedDebuffTypes()
     for _, class in ipairs(util.GetClasses()) do
@@ -160,6 +205,7 @@ function SetDefaults()
                 ["Raid"] = "Small",
                 ["Raid Pets"] = "Small",
                 ["Target"] = "Long",
+                ["Raid Mark"] = "Small",
                 ["Focus"] = PTProfileManager.DEFAULT_PROFILE_NAME,
                 ["Enemy"] = "Enemy"
             },
@@ -187,31 +233,31 @@ function SetDefaults()
             },
             ["ButtonInfo"] = {
                 ["LeftButton"] = {
-                    ["Name"] = "Left",
+                    ["Name"] = getDefaultButtonName("LeftButton"),
                     ["ShowUnbound"] = true
                 },
                 ["MiddleButton"] = {
-                    ["Name"] = "Middle",
+                    ["Name"] = getDefaultButtonName("MiddleButton"),
                     ["ShowUnbound"] = true
                 },
                 ["RightButton"] = {
-                    ["Name"] = "Right",
+                    ["Name"] = getDefaultButtonName("RightButton"),
                     ["ShowUnbound"] = true
                 },
                 ["Button5"] = {
-                    ["Name"] = "Forward",
+                    ["Name"] = getDefaultButtonName("Button5"),
                     ["ShowUnbound"] = true
                 },
                 ["Button4"] = {
-                    ["Name"] = "Back",
+                    ["Name"] = getDefaultButtonName("Button4"),
                     ["ShowUnbound"] = true
                 },
                 ["MOUSEWHEELUP"] = {
-                    ["Name"] = "Wheel Up",
+                    ["Name"] = getDefaultButtonName("MOUSEWHEELUP"),
                     ["ShowUnbound"] = false
                 },
                 ["MOUSEWHEELDOWN"] = {
-                    ["Name"] = "Wheel Down",
+                    ["Name"] = getDefaultButtonName("MOUSEWHEELDOWN"),
                     ["ShowUnbound"] = false
                 },
             }
@@ -291,6 +337,9 @@ function SetDefaults()
                         if options["ChosenProfiles"] and not options["ChosenProfiles"]["Enemy"] then
                             upgraded["ChosenProfiles"]["Enemy"] = "Enemy"
                         end
+                        if options["ChosenProfiles"] and not options["ChosenProfiles"]["Raid Mark"] then
+                            upgraded["ChosenProfiles"]["Raid Mark"] = "Small"
+                        end
                         upgraded["OptionsVersion"] = self.version
                         return upgraded
                     end,
@@ -303,7 +352,7 @@ function SetDefaults()
                 if upgrade:shouldUpgrade(PTOptions) then
                     local prevVersion = PTOptions.OptionsVersion
                     _G.PTOptions = upgrade:upgrade(PTOptions)
-                    Puppeteer.Info("Upgraded options from version "..prevVersion.." to "..upgrade.version)
+                    Puppeteer.Info(string.format(T("Upgraded options from version %s to %s"), prevVersion, upgrade.version))
                 end
             end
         end
@@ -315,6 +364,8 @@ function SetDefaults()
         end
         if not PTOptions["ButtonInfo"] then
             PTOptions["ButtonInfo"] = util.CloneTable(specialDefaults["ButtonInfo"])
+        else
+            localizeDefaultButtonNames(PTOptions["ButtonInfo"])
         end
     end
 
@@ -453,18 +504,18 @@ DefaultIgnoredDispellableDebuffs = {
     "Arcane Overload", "Doom of Medivh" -- Kara40
 }
 
-PTLocale.Array(DefaultTrackedHealingBuffs)
-PTLocale.Array(DefaultTrackedHealingDebuffs)
-PTLocale.Array(DefaultTrackedBuffs)
-PTLocale.Array(DefaultTrackedDebuffs)
+PTLocale.AuraArray(DefaultTrackedHealingBuffs)
+PTLocale.AuraArray(DefaultTrackedHealingDebuffs)
+PTLocale.AuraArray(DefaultTrackedBuffs)
+PTLocale.AuraArray(DefaultTrackedDebuffs)
 for _, buffs in pairs(DefaultClassTrackedBuffs) do
-    PTLocale.Array(buffs)
+    PTLocale.AuraArray(buffs)
 end
 for _, debuffs in pairs(DefaultClassTrackedDebuffs) do
-    PTLocale.Array(debuffs)
+    PTLocale.AuraArray(debuffs)
 end
-PTLocale.Array(DefaultImportantDebuffs)
-PTLocale.Array(DefaultIgnoredDispellableDebuffs)
+PTLocale.AuraArray(DefaultImportantDebuffs)
+PTLocale.AuraArray(DefaultIgnoredDispellableDebuffs)
 
 -- The baked aura sets
 TrackedBuffs = {}
@@ -510,13 +561,14 @@ BakeTrackedAuras()
 
 function AddTrackedBuffs(...)
     for _, buff in ipairs(arg) do
-        table.insert(DefaultTrackedBuffs, buff)
+        table.insert(DefaultTrackedBuffs, PTLocale.TA(buff))
     end
     BakeTrackedAuras()
 end
 
 function RemoveTrackedBuffs(...)
     for _, buff in ipairs(arg) do
+        buff = PTLocale.TA(buff)
         util.RemoveElement(DefaultTrackedBuffs, buff)
         util.RemoveElement(DefaultClassTrackedBuffs[playerClass], buff)
     end
@@ -525,13 +577,14 @@ end
 
 function AddTrackedDebuffs(...)
     for _, debuff in ipairs(arg) do
-        table.insert(DefaultTrackedDebuffs, debuff)
+        table.insert(DefaultTrackedDebuffs, PTLocale.TA(debuff))
     end
     BakeTrackedAuras()
 end
 
 function RemoveTrackedDebuffs(...)
     for _, debuff in ipairs(arg) do
+        debuff = PTLocale.TA(debuff)
         util.RemoveElement(DefaultTrackedDebuffs, debuff)
         util.RemoveElement(DefaultClassTrackedDebuffs[playerClass], debuff)
     end

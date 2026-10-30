@@ -1,13 +1,14 @@
 -- Predicts healing based on previously seen healing.
 -- This library currently is not independent and relies on some Puppeteer code.
 
-if not PTUtil.IsSuperWowPresent() then
+if not PTUtil.HasGUIDUnits() then
     return
 end
 
 PTHealPredict = {}
 PTUtil.SetEnvironment(PTHealPredict)
 local _G = getfenv(0)
+local SpellInfo = PTClientAPI.SpellInfo
 
 local compost = AceLibrary("Compost-2.0")
 
@@ -39,7 +40,7 @@ local PRAYER_OF_HEALING_IDS = PTUtil.ToSet({596, 996, 10960, 10961, 25316})
 local ResurrectionSpells = PTUtil.ToSet({
     "Resurrection", "Revive Champion", "Redemption", "Ancestral Spirit", "Rebirth"
 })
-PTLocale.Keys(ResurrectionSpells)
+PTLocale.AuraKeys(ResurrectionSpells)
 
 local TRACKED_HOTS = PTUtil.ToSet({
     "Rejuvenation", "Regrowth", -- Druid
@@ -47,7 +48,7 @@ local TRACKED_HOTS = PTUtil.ToSet({
     "Mend Pet", -- Hunter
     "First Aid" -- Generic
 })
-PTLocale.Keys(TRACKED_HOTS)
+PTLocale.AuraKeys(TRACKED_HOTS)
 
 function OnLoad()
     print = Puppeteer.print
@@ -168,6 +169,28 @@ function AddIncomingMultiCast(targets, caster, spellID, healAmount, castTime)
 end
 
 local castIcons = {}
+-- Native timestamps are milliseconds; prediction storage retains its original
+-- millisecond duration contract while animated icons use seconds.
+function UpdateCastTiming(caster, startTime, endTime)
+    for target, incoming in pairs(IncomingHeals) do
+        local cast = incoming[caster]
+        if cast then
+            cast.startTime, cast.castTime = startTime / 1000, endTime - startTime
+            UpdateTarget(target)
+        end
+    end
+    for target, resses in pairs(ResurrectionTargets) do
+        if resses[caster] then
+            resses[caster].startTime, resses[caster].castTime = startTime / 1000, endTime - startTime
+            UpdateTarget(target)
+        end
+    end
+    for _, icon in ipairs(castIcons[caster] or {}) do
+        icon.startTime, icon.endTime = startTime / 1000, endTime / 1000
+        icon.time = (endTime - startTime) / 1000
+        icon.unitFrame.castOrderDirty = true
+    end
+end
 function RemoveAllCastIcons()
     for caster, icons in pairs(castIcons) do
         for _, icon in ipairs(castIcons[caster]) do
@@ -401,7 +424,7 @@ end
 local autoShotName = PTLocale.Translate("Auto Shot")
 
 local eventFrame = CreateFrame("Frame", "PTHealPredictCasts")
-eventFrame:RegisterEvent("UNIT_CASTEVENT")
+if PTUtil.IsSuperWowPresent() then eventFrame:RegisterEvent("UNIT_CASTEVENT") end
 eventFrame:SetScript("OnEvent", function()
     local caster, target, event, spellID, duration = arg1, arg2, arg3, arg4, arg5
 
@@ -513,7 +536,7 @@ end)
 
 local trackedHostileSpells = PTUtil.ToSet({"Shackle Undead", "Mind Control", "Fear", "Polymorph", "Polymorph: Turtle", "Polymorph: Cow"})
 local castIconFrame = CreateFrame("Frame", "PTCastIcons")
-castIconFrame:RegisterEvent("UNIT_CASTEVENT")
+if PTUtil.IsSuperWowPresent() then castIconFrame:RegisterEvent("UNIT_CASTEVENT") end
 castIconFrame:SetScript("OnEvent", function()
     local caster, target, event, spellID, duration = arg1, arg2, arg3, arg4, arg5
 

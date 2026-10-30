@@ -2,7 +2,7 @@
 -- One might say you'd be insane to do this just to have custom units, and you'd be correct.
 
 -- SuperWoW check, can't rely on PTUtil because it depends on this file
-if SpellInfo == nil then
+if SpellInfo == nil and not PTClientAPI.UnitGUID then
     return
 end
 
@@ -33,7 +33,7 @@ GUIDCustomUnitMap = {} -- Key: GUID | Value: Array of custom units
 --UnitTypeGUIDUnitMap = {} -- Key: Unit type | Value: {Key: GUID | Value: Custom unit of type}
 CustomUnitGUIDMap = {} -- Key: Custom unit | Value: GUID
 
-DEFAULT_CUSTOM_UNITS = {["focus"] = 40}
+DEFAULT_CUSTOM_UNITS = {["focus"] = 40, ["raidmark"] = 40}
 
 UpdateListeners = {}
 
@@ -81,9 +81,9 @@ function UpdateUnitTypeFrames(unitType)
         local guid = CustomUnitGUIDMap[unit]
         for ui in Puppeteer.UnitFrames(unit) do
             if guid then
-                ui:Show()
                 ui.guidUnit = guid
-                ui:UpdateAll()
+                ui:Show(true)
+                if ui.needsFullUpdate then ui:UpdateAll() end
                 ui:UpdateIncomingHealing()
             else
                 ui:Hide()
@@ -104,9 +104,9 @@ function UpdateUnitFrames(unit)
     local guid = CustomUnitGUIDMap[unit]
     for ui in Puppeteer.UnitFrames(unit) do
         if guid then
-            ui:Show()
             ui.guidUnit = guid
-            ui:UpdateAll()
+            ui:Show(true)
+            if ui.needsFullUpdate then ui:UpdateAll() end
         else
             ui:Hide()
             ui.guidUnit = nil
@@ -150,6 +150,7 @@ function SetCustomUnitGuid(unit, guid, skipUpdate)
         table.insert(unitArray, unit)
         PTGuidRoster.SetUnitGuid(unit, guid)
         PTUnit.UpdateGuidCaches()
+        if Puppeteer.RefreshEventFilters then Puppeteer.RefreshEventFilters() end
         if not skipUpdate then
             UpdateUnitFrames(unit)
         end
@@ -167,6 +168,7 @@ function SetCustomUnitGuid(unit, guid, skipUpdate)
             end
             PTGuidRoster.SetUnitGuid(unit, nil)
             PTUnit.UpdateGuidCaches()
+            if Puppeteer.RefreshEventFilters then Puppeteer.RefreshEventFilters() end
             if not skipUpdate then
                 UpdateUnitFrames(unit)
             end
@@ -333,7 +335,11 @@ function UnitProxy(name, func, defaultValue)
         if not unit then
             return
         end
-        return func(unit)
+        local snapshot = PTClientAPI.Snapshot
+        if snapshot and snapshot[name] ~= nil and (snapshot.unit == unit or
+            (snapshot.guid and PTClientAPI.GetGUID(unit) == snapshot.guid)) then return snapshot[name] end
+        if not func then return defaultValue end
+        return func(PTClientAPI.QueryUnit(unit))
     end
     PTUnitProxy[name] = proxy
     UnitFunctions[name] = proxy
@@ -353,7 +359,11 @@ function DoubleUnitProxy(name, func, defaultValue)
                 return defaultValue
             end
         end
-        return func(unit1, unit2)
+        if not unit1 or not unit2 then
+            return defaultValue
+        end
+        if not func then return defaultValue end
+        return func(PTClientAPI.QueryUnit(unit1), PTClientAPI.QueryUnit(unit2))
     end
     PTUnitProxy[name] = proxy
     UnitFunctions[name] = proxy
@@ -366,6 +376,9 @@ function AuraProxy(name, func, defaultValue)
             if not unit then
                 return defaultValue
             end
+        end
+        if not unit then
+            return defaultValue
         end
         return func(unit, index)
     end
@@ -387,7 +400,12 @@ end
 function CreateUnitProxies()
     AuraProxy("UnitBuff", _G.UnitBuff, nil)
     AuraProxy("UnitDebuff", _G.UnitDebuff, nil)
-    UnitProxy("UnitExists", _G.UnitExists, false)
+    CustomFunction("UnitExists", function(unit)
+        unit = PTClientAPI.ResolveUnit(unit)
+        if not unit then return nil end
+        local exists = _G.UnitExists(PTClientAPI.QueryUnit(unit))
+        return exists and 1 or nil, PTClientAPI.GetGUID(unit)
+    end)
     UnitProxy("UnitHealth", _G.UnitHealth, 0)
     UnitProxy("UnitHealthMax", _G.UnitHealthMax, 0)
     UnitProxy("UnitMana", _G.UnitMana, 0)
@@ -414,6 +432,7 @@ function CreateUnitProxies()
     DoubleUnitProxy("UnitIsEnemy", _G.UnitIsEnemy, false)
     DoubleUnitProxy("UnitIsUnit", _G.UnitIsUnit, false)
     DoubleUnitProxy("UnitCanAttack", _G.UnitCanAttack, false)
+    DoubleUnitProxy("UnitCanAssist", _G.UnitCanAssist, false)
     DoubleUnitProxy("CheckInteractDistance", _G.CheckInteractDistance, false)
     CustomProxy("CastSpellByName", function()
         return function(spell, unit)
@@ -453,7 +472,10 @@ function CreateUnitProxies()
             return UnitXP(a1, a2, a3, a4, a5)
         end
     end)
-    if _G.GetUnitGUID then
+    if PTClientAPI.UnitGUID then
+        UnitProxy("UnitGUID", PTClientAPI.GetGUID, nil)
+        UnitProxy("GetUnitGUID", PTClientAPI.GetGUID, nil)
+    elseif _G.GetUnitGUID then
         UnitProxy("UnitGUID", _G.GetUnitGUID, nil)
         UnitProxy("GetUnitGUID", _G.GetUnitGUID, nil)
     else

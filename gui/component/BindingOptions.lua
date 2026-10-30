@@ -1,4 +1,5 @@
 PTBindingOptions = PTGuiComponent:Extend("puppeteer_binding_options")
+local T = PTLocale.T
 
 function PTBindingOptions:New()
     local obj = setmetatable({}, self)
@@ -183,7 +184,7 @@ function PTBindingOptions:OnAcquire()
         end, true)
         dropdown:SetOptions({
             {
-                text = "Use Default ("..(PTOptions[settingName] and "Yes" or "No")..")",
+                text = string.format(T("Use Default (%s)"), PTOptions[settingName] and T("Yes") or T("No")),
                 setting = nil,
                 initFunc = initFunc,
                 func = func

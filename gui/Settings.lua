@@ -2,10 +2,10 @@ PTSettingsGui = {}
 PTUtil.SetEnvironment(PTSettingsGui, PuppeteerSettings)
 local util = PTUtil
 local colorize = util.Colorize
-local T = PTLocale.TranslateText -- Localize UI display text; passes non-strings through untouched
 local compost = AceLibrary("Compost-2.0")
 local GetOption = PuppeteerSettings.GetOption
 local SetOption = PuppeteerSettings.SetOption
+local T = PTLocale.T
 
 TabFrame = PTGuiLib.Get("tab_frame"):Hide()
 
@@ -183,7 +183,7 @@ function CreateTab_Bindings()
             local dialog = PTGuiLib.Get("simple_dialog", TabFrame)
                 :SetPoint("CENTER", TabFrame, "CENTER", 0, 40)
             dialog:SetTitle("Confirm Delete")
-            dialog:SetText("Are you sure you want to delete binding loadout '"..currentLoadoutName.."'?")
+            dialog:SetText(string.format(T("Are you sure you want to delete binding loadout '%s'?"), currentLoadoutName))
             dialog:AddButton("Yes, delete loadout", function()
                 dialog:Dispose()
                 PopOverlayFrame()
@@ -392,7 +392,7 @@ function UpdateUnsavedChanges()
         SaveButton:SetEnabled(false)
     else
         UnsavedChangesText:Show()
-        UnsavedChangesText:SetText("You have "..changes.." unsaved change"..(changes ~= 1 and "s" or "").." to your bindings")
+        UnsavedChangesText:SetText(string.format(T("You have %s unsaved changes to your bindings"), changes))
         DiscardButton:SetEnabled(true)
         SaveAndCloseButton:SetEnabled(true)
         SaveButton:SetEnabled(true)
@@ -428,8 +428,8 @@ function CreateTab_Options_Casting(panel)
     end)
     factory:dropdown("Cast When (Keys)", "What key state to start casting spells at", "CastWhenKey", {"Key Up", "Key Down"})
     local resSpell = util.ResurrectionSpells[util.GetClass("player")]
-    local autoResInfo = not resSpell and "This does nothing for your class" or {"Replaces your bound spells with "..resSpell..
-        " when clicking on a dead ally", "All other types of binds, such as Actions, will not be replaced"}
+    local autoResInfo = not resSpell and "This does nothing for your class" or {string.format(T("Replaces your bound spells with %s when clicking on a dead ally"), resSpell),
+        "All other types of binds, such as Actions, will not be replaced"}
     factory:checkbox("Auto Resurrect", autoResInfo, "AutoResurrect")
     factory:checkbox("PVP Flag Protection", {"Stops you from casting spells on PVP flagged players if you're not flagged",
         "Attempting to cast will prompt you to make an exception",
@@ -514,7 +514,7 @@ function CreateTab_Options_Other(panel)
         "FrameDrag.AltMoveKey", {"Shift", "Control", "Alt"})
     inverseDropdown:SetWidth(80)
     inverseDropdown:SetPoint("LEFT", dragAllCheckbox, "RIGHT", 90, 0)
-    factory:checkbox("Show Heal Predictions", {"See predictions on incoming healing", "Improved predictions if using SuperWoW"},
+    factory:checkbox("Show Heal Predictions", {"See predictions on incoming healing", "Enhanced by available ClassicAPI or SuperWoW capabilities"},
         "UseHealPredictions", function() Puppeteer.UpdateAllIncomingHealing() end)
 
     factory:checkbox("Out of Range Arrow", {"See an arrow when hovering over an out of range player"}, 
@@ -543,15 +543,15 @@ function CreateTab_Options_Advanced(panel)
     factory:checkbox("(TWoW)\nAuto Role", {"If enabled, the Role Action menu shows auto role detection options", "Enabled Account-Wide"}, 
         "Global.Experiments.AutoRole",
         Puppeteer.InitRoleDropdown)
-    factory:checkbox("(SuperWoW & UnitXP)\nEnemy Frames", 
-        {"If enabled, you will see an additional frame group with in-combat enemies", "Requires SuperWoW and UnitXP SP3", 
+    factory:checkbox("Enemy Frames",
+        {"If enabled, you will see an additional frame group with in-combat enemies", "Requires GUID support from ClassicAPI or SuperWoW",
         "Enabled Per-Character"},
         "Experiments.Enemy",
         function()
-            Puppeteer.SetEnemyTrackingEnabled(PuppeteerSettings.IsExperimentEnabled("Enemy"))
+            if util.HasGUIDUnits() then Puppeteer.SetEnemyTrackingEnabled(PuppeteerSettings.IsExperimentEnabled("Enemy")) end
         end)
-    factory:checkbox("(SuperWoW)\nCast Icons", {"If enabled, you will see incoming casts over unit frames", 
-            "This feature is highly subject to changes", "Requires SuperWoW!", "Enabled Per-Character"},
+    factory:checkbox("Cast Icons", {"If enabled, you will see incoming casts over unit frames",
+            "This feature is highly subject to changes", "Requires reliable cast and target data from ClassicAPI or SuperWoW", "Enabled Per-Character"},
         "Experiments.CastIcons",
         function()
             if PTHealPredict then
@@ -642,9 +642,9 @@ function CreateTab_Options_Mods(panel)
         ["VanillaUtils"] = {1, 1, 1}
     }
     local detectedTexts = {
-        ["Detected"] = colorize("Mod Detected", 0.2, 1, 0.2).." - %s",
-        ["Not Detected"] = colorize("Mod Not Detected", 1, 0.2, 0.2),
-        ["Outdated"] = colorize("Mod Detected (Out of Date)", 1, 1, 0).." - %s"
+        ["Detected"] = colorize(T("Mod Detected"), 0.2, 1, 0.2).." - %s",
+        ["Not Detected"] = colorize(T("Mod Not Detected"), 1, 0.2, 0.2),
+        ["Outdated"] = colorize(T("Mod Detected (Out of Date)"), 1, 1, 0).." - %s"
     }
     local detectedLabelTexts = {}
     for _, mod in ipairs({"SuperWoW", "UnitXP SP3", "Nampower"}) do
@@ -675,17 +675,28 @@ function CreateTab_Options_Mods(panel)
         :SetPoint("RIGHT", superWowLink, "LEFT", -5, 0)
 
     layout:ignoreNext()
-    local setMouseoverCheckbox = factory:checkbox("Set Mouseover", {"Requires SuperWoW Mod To Work", 
-        "If enabled, hovering over frames will set your mouseover target"}, "SetMouseover")
+    local setMouseoverCheckbox = factory:checkbox("Set Mouseover", {"Requires ClassicAPI or SuperWoW",
+        "If enabled, hovering over frames will set your mouseover target"}, "SetMouseover", function()
+            for _, frames in pairs(Puppeteer.PTUnitFrames) do
+                for _, ui in ipairs(frames) do
+                    if ui.button and ui.button.SetAttribute then ui.button:SetAttribute("unit", nil) end
+                end
+            end
+            if not PTOptions.SetMouseover and util.IsSuperWowPresent() then SetMouseoverUnit(nil) end
+        end)
         :SetPoint("TOP", superWowLink, "BOTTOM", 0, -10)
-    if not util.IsSuperWowPresent() then
+    if not util.HasGUIDUnits() then
         setMouseoverCheckbox:Disable()
     end
+
+    layout:ignoreNext()
+    local classicCheckbox = factory:checkbox("ClassicAPI", {"Use available ClassicAPI capabilities", "Changes take effect after /reload"}, "UseClassicAPI")
+        :SetPoint("TOP", setMouseoverCheckbox, "BOTTOM", 0, -10)
 
     -- UnitXP SP3
 
     local unitXPLabel = CreateLabel(container, colorize("UnitXP SP3", modColors["UnitXP SP3"]))
-        :SetPoint("TOP", setMouseoverCheckbox, "BOTTOM", 0, -20)
+        :SetPoint("TOP", classicCheckbox, "BOTTOM", 0, -20)
         :SetFontSize(14)
     local unitXPDetectedLabel = CreateLabel(container, detectedLabelTexts["UnitXP SP3"])
         :SetPoint("TOP", unitXPLabel, "BOTTOM", 0, -5)
@@ -770,7 +781,7 @@ function CreateTab_Customize()
         :SetFontSize(14)
     
 
-    local preferredFrameOrder = {"Party", "Pets", "Raid", "Raid Pets", "Target", "Focus"}
+    local preferredFrameOrder = {"Party", "Pets", "Raid", "Raid Pets", "Target", "Raid Mark", "Focus"}
     local frameDropdown = CreateLabeledDropdown(frameStyleContainer, "Configure Frame", "The frame to edit the attributes of")
         :SetWidth(150)
         :SetDynamicOptions(function(addOption, level, args)
@@ -818,7 +829,7 @@ function CreateTab_Customize()
                 local selectedFrame = frameDropdown:GetText()
                 PTOptions.ChosenProfiles[selectedFrame] = self.text
 
-                if selectedFrame == "Focus" and not util.IsSuperWowPresent() then
+                if selectedFrame == "Focus" and not util.HasGUIDUnits() then
                     return
                 end
 
@@ -942,10 +953,10 @@ function CreateTab_Customize()
     local styleOverridesText = PTGuiLib.GetText(container, "Style Overrides")
         :SetFontSize(14)
         :SetPoint("TOP", container, "TOP", 0, -5)
-    local explainer = PTGuiLib.GetText(container, "Style Overrides are an inelegant, temporary measure to enable customization "..
+        local explainer = PTGuiLib.GetText(container, T("Style Overrides are an inelegant, temporary measure to enable customization "..
             "of commonly requested unit frame edits. Some settings may be visually incompatible with one another. "..
-            "This will be replaced in a future date with a system that is much more robust.\n\n"..
-            colorize("You must reload or relog for any changes to take effect!", 1, 0.5, 0.5))
+            "This will be replaced in a future date with a system that is much more robust.").."\n\n"..
+            colorize(T("You must reload or relog for any changes to take effect!"), 1, 0.5, 0.5))
         :SetPoint("TOP", styleOverridesText, "TOP", 0, -20)
         :SetWidth(360)
 
@@ -1016,7 +1027,7 @@ function CreateTab_Customize()
     add(createSlider("Out of Range At\n(Friendly)", "How many yards to fade out friendly units", "OutOfRangeThreshold.Friendly", 0, 100))
     add(createSlider("Out of Range At\n(Hostile)", "How many yards to fade out hostile units", "OutOfRangeThreshold.Hostile", 0, 100))
     add(createSlider("Out of Range Opacity", "How opaque out of range players appear in %", "OutOfRangeOpacity", 0, 100))
-    local visualIssues = colorize("Adjusting this value may cause visual issues!", 1, 0.4, 0.4)
+    local visualIssues = colorize(T("Adjusting this value may cause visual issues!"), 1, 0.4, 0.4)
     add(createSlider("Unit Frame Width", {"The width of each unit frame", visualIssues}, "Width", 20, 250))
     add(createSlider("Health Bar Height", {"The height of the health bar", visualIssues}, "HealthBarHeight", 1, 100))
     add(createSlider("Power Bar Height", {"The height of the power bar", visualIssues}, "PowerBarHeight", 1, 100))
@@ -1144,18 +1155,15 @@ end
 function CreateTab_About()
     local container = TabFrame:CreateTab("About")
 
-    -- Compose from translated fragments; names, emails and the version stay literal. The fully
-    -- composed string is not itself a translation key, so the component's auto-translate leaves it
-    -- as-is (the fragments are already localized).
     local text = PTGuiLib.GetText(container,
-            T("Puppeteer Version").." "..Puppeteer.VERSION..
-            "\n\n\n"..T("Puppeteer Author")..": OldManAlpha\n"..T("Turtle Nordanaar IGN")..": Oldmana, Lowall, Jmdruid"..
-            "\n\n"..T("HealersMate Original Author")..": i2ichardt\n"..T("Email")..": rj299@yahoo.com"..
+            T("Puppeteer Version ")..Puppeteer.VERSION..
+            "\n\n\n"..T("Puppeteer Author: OldManAlpha").."\n"..T("Turtle Nordanaar IGN: Oldmana, Lowall, Jmdruid")..
+            "\n\n"..T("HealersMate Original Author: i2ichardt").."\nEmail: rj299@yahoo.com"..
             "\n\n"..T("Additional Contributors")..
-            "\nTurtle WoW Community: "..T("Answers to addon development questions")..
-            "\nShagu: "..T("Utility functions & providing a wealth of research material")..
-            "\nChatGPT: "..T("Utility functions")..
-            "\n\n\n"..T("Check For Updates, Report Issues, Make Suggestions")..":\n",
+            "\n"..T("Turtle WoW Community: Answers to addon development questions")..
+            "\n"..T("Shagu: Utility functions & providing a wealth of research material")..
+            "\n"..T("ChatGPT: Utility functions")..
+            "\n\n\n"..T("Check For Updates, Report Issues, Make Suggestions:").."\n",
             12)
         :SetPoint("TOP", container, "TOP", 0, -80)
 

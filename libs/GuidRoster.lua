@@ -1,6 +1,6 @@
 -- A utility to map guids to units
 
-if not PTUtil.IsSuperWowPresent() then
+if not PTUtil.HasGUIDUnits() then
     return
 end
 

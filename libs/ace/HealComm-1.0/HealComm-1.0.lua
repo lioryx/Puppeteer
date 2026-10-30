@@ -1820,5 +1820,9 @@ function HealComm:ProcessSpellCast(unit)
 	self.SpellCastInfo[5] = (self.SpellCastInfo[5] or mod)
 end
 
+HealComm.PuppeteerClassicContract = {}
+for _, method in ipairs({"ProcessSpellCast", "SPELLCAST_START", "SPELLCAST_STOP", "SPELLCAST_INTERRUPTED", "SPELLCAST_FAILED", "SPELLCAST_DELAYED"}) do
+    HealComm.PuppeteerClassicContract[method] = HealComm[method]
+end
 AceLibrary:Register(HealComm, MAJOR_VERSION, MINOR_VERSION, activate, nil, external)
 HealComm = nil

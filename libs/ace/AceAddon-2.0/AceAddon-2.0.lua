@@ -51,7 +51,7 @@ if GetLocale() == "deDE" then
 		["Buffs"] = "Buffs",
 		["Chat/Communication"] = "Chat/Kommunikation",
 		["Druid"] = "Druide",
-		["Hunter"] = "Jäger",
+		["Hunter"] = "Jï¿½ger",
 		["Mage"] = "Magier",
 		["Paladin"] = "Paladin",
 		["Priest"] = "Priester",

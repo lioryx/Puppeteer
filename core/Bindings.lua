@@ -6,6 +6,7 @@ local colorize = util.Colorize
 local GetSpellID = util.GetSpellID
 local GetClass = util.GetClass
 local CompostReclaim = util.CompostReclaim
+local T = PTLocale.T
 
 BindingClipboard = nil
 
@@ -277,14 +278,21 @@ function GenerateDefaultBindings()
         end
         l2[button] = binding
     end
+    local function localizeSpell(spell)
+        if spell == "Power Word:Fortitude" then
+            spell = "Power Word: Fortitude"
+        end
+        return PTLocale.TA(spell)
+    end
     local function setSpell(button, spell)
-        setBinding(button, {Type = "SPELL", Data = spell})
+        setBinding(button, {Type = "SPELL", Data = localizeSpell(spell)})
     end
     local function setBestSpell(button, spells)
         local friendlyOrHostile = friendlyOrHostile
         local modifier = modifier
         table.insert(queuedBestSpellTasks, function()
             for _, spell in ipairs(spells) do
+                spell = localizeSpell(spell)
                 if util.GetSpellID(spell) then
                     setContext(friendlyOrHostile, modifier)
                     setSpell(button, spell)
@@ -297,13 +305,13 @@ function GenerateDefaultBindings()
     local function setMulti(button, tooltip, spells)
         local bindings = {}
         for i, spell in ipairs(spells) do
-            bindings[i] = {Type = "SPELL", Data = spell}
+            bindings[i] = {Type = "SPELL", Data = localizeSpell(spell)}
         end
         setBinding(button, {
             Type = "MULTI",
             Tooltip = {
                 Type = "CUSTOM",
-                Data = tooltip
+                Data = T(tooltip)
             },
             Data = {
                 Bindings = bindings
@@ -385,7 +393,7 @@ PVPProtectOverrideTime = 0
 PVPProtectMenu = PTGuiLib.Get("dropdown", UIParent)
 PVPProtectMenu:SetOptions({
     {
-        text = colorize("PVP Flag Protection", 0.3, 1, 0.3),
+        text = colorize(T("PVP Flag Protection"), 0.3, 1, 0.3),
         textHeight = 11,
         notCheckable = true,
         disabled = true
@@ -395,11 +403,11 @@ PVPProtectMenu:SetOptions({
         disabled = true
     },
     {
-        text = colorize("Whoops, thanks for the save!", 0.8, 1, 0.8),
+        text = colorize(T("Whoops, thanks for the save!"), 0.8, 1, 0.8),
         notCheckable = true,
         func = function()
             if UIErrorsFrame then
-                UIErrorsFrame:AddMessage(colorize("No problem, stay safe", 0.2, 1, 0.2))
+                UIErrorsFrame:AddMessage(colorize(T("No problem, stay safe"), 0.2, 1, 0.2))
             end
         end
     },
@@ -408,22 +416,22 @@ PVPProtectMenu:SetOptions({
         disabled = true
     },
     {
-        text = colorize("Disable protection for 5 min", 1, 0.8, 0.8),
+        text = colorize(T("Disable protection for 5 min"), 1, 0.8, 0.8),
         notCheckable = true,
         func = function()
             PVPProtectOverrideTime = GetTime() + (5 * 60)
             if UIErrorsFrame then
-                UIErrorsFrame:AddMessage(colorize("Protection disabled for 5 min", 1, 0, 0))
+                UIErrorsFrame:AddMessage(colorize(T("Protection disabled for 5 min"), 1, 0, 0))
             end
         end
     },
     {
-        text = colorize("Disable protection this session", 1, 0.6, 0.6),
+        text = colorize(T("Disable protection this session"), 1, 0.6, 0.6),
         notCheckable = true,
         func = function()
             PVPProtectOverrideTime = GetTime() + (1000 * 60)
             if UIErrorsFrame then
-                UIErrorsFrame:AddMessage(colorize("Protection disabled this session", 1, 0, 0))
+                UIErrorsFrame:AddMessage(colorize(T("Protection disabled this session"), 1, 0, 0))
             end
         end
     }
@@ -469,6 +477,7 @@ end
 local targetedSpell
 local targetedSpellUnit
 local function targetedCastFunc()
+    if PTClientAPI.CastAtUnit and PTClientAPI.CastAtUnit(targetedSpell, targetedSpellUnit) then return end
     if util.IsSuperWowPresent() then
         CastSpellByName(targetedSpell, targetedSpellUnit)
     else
@@ -507,7 +516,8 @@ function RunBinding_Spell(binding, unit)
         return
     end
 
-    RunTargetedAction(binding, unit, setupTargetedCast(spell, unit), not util.IsSuperWowPresent())
+    local native = PTClientAPI.CanDirectCast and PTClientAPI.CanDirectCast()
+    RunTargetedAction(binding, unit, setupTargetedCast(spell, unit), not (native or util.IsSuperWowPresent()))
 end
 
 function RunBinding_Action(binding, unit, unitFrame)
@@ -519,9 +529,11 @@ function RunBinding_Action(binding, unit, unitFrame)
 end
 
 function RunBinding_Item(binding, unit)
+    local native = PTClientAPI.Enabled and PTClientAPI.Items and PTClientAPI.Items.UseAtUnit
     RunTargetedAction(binding, unit, function()
-        util.UseItem(binding.Data)
-    end, true)
+        if native then native(binding.Data, PTClientAPI.QueryUnit(unit), false)
+        else util.UseItem(binding.Data) end
+    end, not native)
 end
 
 function RunBinding_Macro(binding, unit)
@@ -567,7 +579,7 @@ local targetedScript
 local function targetedScriptFunc()
     local ok, result = pcall(targetedScript)
     if not ok then
-        DEFAULT_CHAT_FRAME:AddMessage(colorize("[Puppeteer] Error occurred while running custom script binding:", 1, 0.5, 0.5))
+        DEFAULT_CHAT_FRAME:AddMessage(colorize("[Puppeteer] "..T("Error occurred while running custom script binding:"), 1, 0.5, 0.5))
         DEFAULT_CHAT_FRAME:AddMessage(colorize(result, 1, 0.5, 0.5))
     end
 end
@@ -580,7 +592,7 @@ function RunBinding_Script(binding, unit, unitFrame)
     if not BindingScriptCache[scriptString] then
         local func, err = loadstring(preScript..scriptString, scriptString)
         if not func then
-            DEFAULT_CHAT_FRAME:AddMessage(colorize("[Puppeteer] Failed to load binding function:", 1, 0.5, 0.5))
+            DEFAULT_CHAT_FRAME:AddMessage(colorize("[Puppeteer] "..T("Failed to load binding function:"), 1, 0.5, 0.5))
             DEFAULT_CHAT_FRAME:AddMessage(colorize(err, 1, 0.5, 0.5))
             return
         end
@@ -632,7 +644,7 @@ local function RunMultiBindingElement(self)
     -- It's rather important that we don't raise an error here
     local ok, result = pcall(RunBinding, self.subBinding, self.unit, self.unitFrame)
     if not ok then
-        DEFAULT_CHAT_FRAME:AddMessage("Error while running binding: "..result)
+        DEFAULT_CHAT_FRAME:AddMessage(T("Error while running binding: ")..result)
     end
 
     -- Restore state to what it should be
@@ -690,7 +702,7 @@ function RunBinding_Multi(binding, unit, unitFrame)
             "disabled", true
         ))
         table.insert(options, compost:AcquireHash(
-            "text", colorize("Close Menu", NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b),
+            "text", colorize(T("Close Menu"), NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b),
             "notCheckable", true,
             "keepShownOnClick", true,
             "func", function(self)
